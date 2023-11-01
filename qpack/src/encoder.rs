@@ -176,7 +176,7 @@ impl Encoder {
         };
 
         if required_insert_count != 0 {
-            self.stream_index.entry(stream_id).or_insert_with(std::collections::VecDeque::new);
+            self.stream_index.entry(stream_id).or_default();
             self.stream_index
                 .get_mut(&stream_id)
                 .unwrap()

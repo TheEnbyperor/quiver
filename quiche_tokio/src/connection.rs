@@ -374,6 +374,12 @@ impl ConnectionNewStreams {
     }
 }
 
+struct PendingReceive {
+    stream_id: u64,
+    read_len: usize,
+    resp: tokio::sync::oneshot::Sender<ConnectionResult<(Vec<u8>, bool)>>,
+}
+
 impl SharedConnectionState {
     fn run(self: std::sync::Arc<Self>, mut inner: InnerConnectionState) {
         let (timeout_tx, mut timeout_rx) = tokio::sync::mpsc::channel(1);
@@ -381,11 +387,7 @@ impl SharedConnectionState {
         tokio::task::spawn(async move {
             let mut buf = [0; 65535];
             let mut out = vec![0; inner.max_datagram_size];
-            let mut pending_recv: Vec<(
-                u64,
-                usize,
-                tokio::sync::oneshot::Sender<ConnectionResult<(Vec<u8>, bool)>>,
-            )> = vec![];
+            let mut pending_recv: Vec<PendingReceive> = vec![];
             let mut known_stream_ids = std::collections::HashSet::new();
 
             'outer: loop {
@@ -420,17 +422,17 @@ impl SharedConnectionState {
                         inner.control_tx.send(Control::ShouldSend).await.unwrap();
 
                         let readable = pending_recv
-                            .extract_if(|s| inner.conn.stream_readable(s.0))
+                            .extract_if(|s| inner.conn.stream_readable(s.stream_id))
                             .collect::<Vec<_>>();
-                        for (stream_id, len, resp) in readable {
-                            let mut buf = vec![0u8; len];
-                            match inner.conn.stream_recv(stream_id, &mut buf) {
+                        for s in readable {
+                            let mut buf = vec![0u8; s.read_len];
+                            match inner.conn.stream_recv(s.stream_id, &mut buf) {
                                 Ok((read, fin)) => {
                                     let out = buf[..read].to_vec();
-                                    let _ = resp.send(Ok((out, fin)));
+                                    let _ = s.resp.send(Ok((out, fin)));
                                 }
                                 Err(e) => {
-                                    let _ = resp.send(Err(e.into()));
+                                    let _ = s.resp.send(Err(e.into()));
                                 }
                             }
                         }
@@ -439,9 +441,11 @@ impl SharedConnectionState {
                             let client_flag = stream_id & 1;
                             if inner.conn.is_server() && client_flag == 1 {
                                 return false;
-                            } else if !inner.conn.is_server() && client_flag == 0 {
+                            }
+                            if !inner.conn.is_server() && client_flag == 0 {
                                 return false;
-                            } else if known_stream_ids.contains(stream_id) {
+                            }
+                            if known_stream_ids.contains(stream_id) {
                                 return false;
                             }
                             known_stream_ids.insert(*stream_id);
@@ -509,7 +513,11 @@ impl SharedConnectionState {
                                         let _ = resp.send(Ok((out, fin)));
                                     }
                                     Err(quiche::Error::Done) => {
-                                        pending_recv.push((stream_id, len, resp));
+                                        pending_recv.push(PendingReceive {
+                                            stream_id,
+                                            read_len: len,
+                                            resp
+                                        });
                                     }
                                     Err(e) => {
                                         let _ = resp.send(Err(e.into()));

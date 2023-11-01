@@ -38,33 +38,25 @@ impl StreamID {
     }
 
     pub fn can_read(&self, is_server: bool) -> bool {
-        if self.is_bidi() {
-            true
-        } else if is_server && (self.0 & 1 == 0) {
-            true
-        } else { !is_server && (self.0 & 1 == 1) }
+        self.is_bidi() || (is_server && (self.0 & 1 == 0)) || (!is_server && (self.0 & 1 == 1))
     }
 
     pub fn can_write(&self, is_server: bool) -> bool {
-        if self.is_bidi() {
-            true
-        } else if is_server && (self.0 & 1 == 1) {
-            true
-        } else { !is_server && (self.0 & 1 == 0) }
+        self.is_bidi() || (is_server && (self.0 & 1 == 1)) || (!is_server && (self.0 & 1 == 0))
     }
 }
 
+type ReadOutput = std::io::Result<Vec<u8>>;
+type WriteOutput = std::io::Result<usize>;
+type StreamFut<T> = Option<std::pin::Pin<Box<dyn Future<Output = T> + Send + Sync>>>;
 pub struct Stream {
     is_server: bool,
     stream_id: StreamID,
     shared_state: std::sync::Arc<connection::SharedConnectionState>,
     control_tx: tokio::sync::mpsc::Sender<connection::Control>,
-    async_read:
-        Option<std::pin::Pin<Box<dyn Future<Output = std::io::Result<Vec<u8>>> + Send + Sync>>>,
-    async_write:
-        Option<std::pin::Pin<Box<dyn Future<Output = std::io::Result<usize>> + Send + Sync>>>,
-    async_shutdown:
-        Option<std::pin::Pin<Box<dyn Future<Output = std::io::Result<usize>> + Send + Sync>>>,
+    async_read: StreamFut<ReadOutput>,
+    async_write: StreamFut<WriteOutput>,
+    async_shutdown: StreamFut<WriteOutput>,
     read_fin: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -136,15 +128,16 @@ impl Stream {
         control_tx: tokio::sync::mpsc::Sender<connection::Control>,
         len: usize,
         read_fin: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    ) -> std::io::Result<Vec<u8>> {
+    ) -> ReadOutput {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        if let Err(_) = control_tx
+        if control_tx
             .send(connection::Control::StreamRecv {
                 stream_id: stream_id.0,
                 len,
                 resp: tx,
             })
             .await
+            .is_err()
         {
             warn!(
                 "Connection error: {:?}",
@@ -176,9 +169,9 @@ impl Stream {
         control_tx: tokio::sync::mpsc::Sender<connection::Control>,
         data: Vec<u8>,
         fin: bool,
-    ) -> std::io::Result<usize> {
+    ) -> WriteOutput {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        if let Err(_) = control_tx
+        if control_tx
             .send(connection::Control::StreamSend {
                 stream_id: stream_id.0,
                 data,
@@ -186,6 +179,7 @@ impl Stream {
                 resp: tx,
             })
             .await
+            .is_err()
         {
             warn!(
                 "Connection error: {:?}",

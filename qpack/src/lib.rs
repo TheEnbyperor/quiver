@@ -81,8 +81,8 @@ impl Header<'static> {
 impl<'a> Header<'a> {
     fn make_static(&self) -> Header<'static> {
         Header {
-            name: std::borrow::Cow::Owned(self.name.to_owned().into_owned()),
-            value: std::borrow::Cow::Owned(self.value.to_owned().into_owned()),
+            name: std::borrow::Cow::Owned(self.name.clone().into_owned()),
+            value: std::borrow::Cow::Owned(self.value.clone().into_owned()),
         }
     }
 

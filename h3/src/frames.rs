@@ -110,7 +110,7 @@ impl Frame {
         let length: usize = crate::vli::read_int(buf)
             .await?
             .try_into()
-            .map_err(|_| error::Error::FrameError)?;
+            .map_err(|_| error::Error::Frame)?;
         let mut data = vec![0u8; length];
         buf.read_exact(&mut data).await?;
         Ok(Some(match frame_type {
@@ -120,7 +120,7 @@ impl Frame {
                 let mut cur = std::io::Cursor::new(data);
                 let stream_id = crate::vli::read_int(&mut cur).await?;
                 if cur.position() as usize != length {
-                    return Err(error::Error::FrameError.into());
+                    return Err(error::Error::Frame.into());
                 }
                 Self::CancelPush(stream_id)
             }
@@ -128,7 +128,7 @@ impl Frame {
                 let mut cur = std::io::Cursor::new(data);
                 let settings = settings::Settings::read(&mut cur).await?;
                 if cur.position() as usize != length {
-                    return Err(error::Error::FrameError.into());
+                    return Err(error::Error::Frame.into());
                 }
                 Self::Settings(settings)
             }
@@ -146,7 +146,7 @@ impl Frame {
                 let mut cur = std::io::Cursor::new(data);
                 let stream_id = crate::vli::read_int(&mut cur).await?;
                 if cur.position() as usize != length {
-                    return Err(error::Error::FrameError.into());
+                    return Err(error::Error::Frame.into());
                 }
                 Self::GoAway(stream_id)
             }
@@ -154,7 +154,7 @@ impl Frame {
                 let mut cur = std::io::Cursor::new(data);
                 let max_push_id = crate::vli::read_int(&mut cur).await?;
                 if cur.position() as usize != length {
-                    return Err(error::Error::FrameError.into());
+                    return Err(error::Error::Frame.into());
                 }
                 Self::MaxPushID(max_push_id)
             }

@@ -101,7 +101,7 @@ impl std::fmt::Debug for FieldString {
 }
 
 impl FieldString {
-    pub fn to_vec(self) -> std::io::Result<Vec<u8>> {
+    pub fn into_vec(self) -> std::io::Result<Vec<u8>> {
         match self {
             Self::Raw(r) => Ok(r),
             Self::Huffman(h) => huffman::decode(&h),

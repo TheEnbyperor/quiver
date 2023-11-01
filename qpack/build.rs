@@ -406,11 +406,7 @@ fn main() {
         std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("qpack_static_table.rs");
     let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
 
-    writeln!(
-        &mut file,
-        "const STATIC_TABLE: &'static [TableEntry] = &["
-    )
-    .unwrap();
+    writeln!(&mut file, "const STATIC_TABLE: &[TableEntry] = &[").unwrap();
     for entry in STATIC_TABLE {
         writeln!(
             &mut file,
@@ -432,7 +428,7 @@ fn main() {
     }
     writeln!(
         &mut file,
-        "static NAME_LOOKUP: phf::Map<&'static [u8], usize> = {};",
+        "static NAME_LOOKUP: phf::Map<&[u8], usize> = {};",
         name_lookup.build()
     )
     .unwrap();
@@ -451,11 +447,11 @@ fn main() {
     let path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("qpack_huffman.rs");
     let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
 
-    write!(&mut file, "static HUFFMAN_TREE: &'static Node = ").unwrap();
+    write!(&mut file, "static HUFFMAN_TREE: &Node = ").unwrap();
     make_huffman_node(&mut file, 0, 1);
     writeln!(&mut file, ";").unwrap();
 
-    write!(&mut file, "static HUFFMAN_TABLE: &'static[(u8, u32)] = &[").unwrap();
+    write!(&mut file, "static HUFFMAN_TABLE: &[(u8, u32)] = &[").unwrap();
     let mut huffman_table = HUFFMAN_TABLE[..HUFFMAN_TABLE.len() - 1].to_vec();
     huffman_table.sort_by_key(|(_, _, c)| *c);
     for line in huffman_table {

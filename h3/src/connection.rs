@@ -240,8 +240,9 @@ impl Connection {
                     .lock()
                     .await
                     .handle_encoder_instruction(instruction);
-                if let Err(_) =
-                    Self::try_result(&qpack_encoder_loop_state, res.map_err(Into::into)).await
+                if Self::try_result(&qpack_encoder_loop_state, res.map_err(Into::into))
+                    .await
+                    .is_err()
                 {
                     break;
                 }
@@ -302,8 +303,9 @@ impl Connection {
                     .lock()
                     .await
                     .handle_decoder_instruction(instruction);
-                if let Err(_) =
-                    Self::try_result(&qpack_decoder_loop_state, res.map_err(Into::into)).await
+                if Self::try_result(&qpack_decoder_loop_state, res.map_err(Into::into))
+                    .await
+                    .is_err()
                 {
                     break;
                 }
@@ -424,7 +426,7 @@ impl Connection {
         pending_peer_streams: &mut PendingPeerStreams,
     ) -> error::HttpResult<()> {
         if stream.is_bidi() {
-            return Err(error::Error::StreamCreationError.into());
+            return Err(error::Error::StreamCreation.into());
         }
         let stream_type = vli::read_int(&mut stream).await?;
         match UniStreamType::from_type_id(stream_type) {
@@ -450,7 +452,7 @@ impl Connection {
         let res = frames::Frame::read(stream).await;
         let frame = Self::try_result(&self.shared_state, res).await?;
         match frame {
-            None => Err(error::HttpError::TransportError(
+            None => Err(error::HttpError::Transport(
                 std::io::ErrorKind::UnexpectedEof.into(),
             )),
             Some(frames::Frame::Settings(settings)) => {
@@ -500,7 +502,7 @@ impl Connection {
         match result {
             Ok(d) => Ok(d),
             Err(err) => {
-                if let error::HttpError::ProtocolError(proto_err) = &err {
+                if let error::HttpError::Protocol(proto_err) = &err {
                     state
                         .should_close
                         .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -523,7 +525,7 @@ impl Connection {
             let response_frame = match frames::Frame::read(stream).await? {
                 Some(f) => f,
                 None => {
-                    return Err(error::HttpError::TransportError(
+                    return Err(error::HttpError::Transport(
                         std::io::ErrorKind::UnexpectedEof.into(),
                     ));
                 }

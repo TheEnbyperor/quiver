@@ -32,29 +32,29 @@ impl Settings {
                     if err.kind() == std::io::ErrorKind::UnexpectedEof {
                         break;
                     }
-                    return Err(error::Error::FrameError.into());
+                    return Err(error::Error::Frame.into());
                 }
             };
             let value = crate::vli::read_int(buf)
                 .await
-                .map_err(|_| error::Error::FrameError)?;
+                .map_err(|_| error::Error::Frame)?;
 
             match identifier {
                 0x01 => {
                     if out.qpack_max_table_capacity.is_some() {
-                        return Err(error::Error::SettingsError.into());
+                        return Err(error::Error::Settings.into());
                     }
                     out.qpack_max_table_capacity = Some(value)
                 }
                 0x06 => {
                     if out.max_field_section_size.is_some() {
-                        return Err(error::Error::SettingsError.into());
+                        return Err(error::Error::Settings.into());
                     }
                     out.max_field_section_size = Some(value)
                 }
                 0x07 => {
                     if out.qpack_blocked_streams.is_some() {
-                        return Err(error::Error::SettingsError.into());
+                        return Err(error::Error::Settings.into());
                     }
                     out.qpack_blocked_streams = Some(value)
                 }

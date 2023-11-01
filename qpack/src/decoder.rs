@@ -156,7 +156,7 @@ impl Decoder {
                     let mut field = self.get_field(name_index, base, false)?;
                     field.value = std::borrow::Cow::Owned(
                         value
-                            .to_vec()
+                            .into_vec()
                             .map_err(|_| error::QPackError::DecompressionFailed)?,
                     );
                     headers.headers.push(field);
@@ -170,7 +170,7 @@ impl Decoder {
                         self.get_field(field_lines::FieldIndex::Dynamic(name_index), base, true)?;
                     field.value = std::borrow::Cow::Owned(
                         value
-                            .to_vec()
+                            .into_vec()
                             .map_err(|_| error::QPackError::DecompressionFailed)?,
                     );
                     headers.headers.push(field);
@@ -182,12 +182,12 @@ impl Decoder {
                 } => {
                     headers.headers.push(Header {
                         name: std::borrow::Cow::Owned(
-                            name.to_vec()
+                            name.into_vec()
                                 .map_err(|_| error::QPackError::DecompressionFailed)?,
                         ),
                         value: std::borrow::Cow::Owned(
                             value
-                                .to_vec()
+                                .into_vec()
                                 .map_err(|_| error::QPackError::DecompressionFailed)?,
                         ),
                     });
