@@ -3,6 +3,8 @@ name = "quiver-example"
 version = "0.1.0"
 edition = "2021"
 authors = ["Q Misell <q@magicalcodewit.ch>"]
+license = "MIT"
+publish = false
 
 [dependencies]
 quiver-h3 = { path = "../h3" }

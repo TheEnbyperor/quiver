@@ -3,6 +3,8 @@ name = "quiver-qpack"
 version = "0.1.0"
 edition = "2021"
 authors = ["Q Misell <q@magicalcodewit.ch>"]
+description = "Implementation of RFC 9204 QPACK"
+license = "MIT"
 
 [dependencies]
 async-trait = "0.1.74"
