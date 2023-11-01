@@ -39,6 +39,7 @@ impl Encoder {
         !self.pending_commands.is_empty()
     }
 
+    /// Drains pending control commands from the encoder's state
     pub fn pending_encoder_commands(&mut self) -> Vec<instructions::EncoderInstruction> {
         self.pending_commands.drain(..).collect()
     }

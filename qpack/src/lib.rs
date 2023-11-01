@@ -46,6 +46,14 @@ impl<'a> Headers<'a> {
     }
 }
 
+impl<'a> std::ops::Deref for Headers<'a> {
+    type Target = [Header<'a>];
+
+    fn deref(&self) -> &Self::Target {
+        self.headers.deref()
+    }
+}
+
 #[derive(Clone)]
 pub struct Header<'a> {
     pub name: std::borrow::Cow<'a, [u8]>,

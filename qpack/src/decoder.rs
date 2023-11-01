@@ -8,6 +8,8 @@ pub struct Decoder {
 }
 
 pub enum DecodeResult {
+    /// The decoder needs more data from the control stream to be able to decode
+    /// The notify object will be called at such time the data is available.
     Wait(std::sync::Arc<tokio::sync::Notify>),
     Headers(Headers<'static>),
 }
@@ -31,6 +33,7 @@ impl Decoder {
         !self.pending_commands.is_empty()
     }
 
+    /// Drains pending control commands from the decoder's state
     pub fn pending_decoder_commands(&mut self) -> Vec<instructions::DecoderInstruction> {
         self.pending_commands.drain(..).collect()
     }
