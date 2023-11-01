@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "h3",
+    "qpack",
+    "quiche_tokio",
+]
+exclude = [
+    "example"
+]

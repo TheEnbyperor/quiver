@@ -1,0 +1,13 @@
+[package]
+name = "quiche-tokio"
+version = "0.1.0"
+edition = "2021"
+authors = ["Q Misell <q@magicalcodewit.ch>"]
+
+[dependencies]
+async-trait = "0.1.74"
+log = "0.4.20"
+quiche = { version = "0.18.0", features = ["qlog"] }
+rand = "0.8.5"
+tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
+
