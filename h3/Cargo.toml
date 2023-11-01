@@ -15,8 +15,8 @@ bitstream-io = "1.7.0"
 log = "0.4.20"
 tokio = { version = "1.33.0", features = [] }
 tokio-bitstream-io = "0.0.7"
-quiver-qpack = { path = "../qpack" }
-quiche-tokio = { path = "../quiche_tokio" }
+quiver-qpack = { path = "../qpack", version = "0.1" }
+quiche-tokio = { path = "../quiche_tokio", version = "0.1" }
 
 [dev-dependencies]
 hex = "0.4.3"
