@@ -29,7 +29,7 @@ impl QLog {
 
 impl std::io::Write for QLog {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Err(_) = self.bytes_tx.send(buf.to_vec()) {
+        if self.bytes_tx.send(buf.to_vec()).is_err() {
             return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, ""));
         }
         Ok(buf.len())

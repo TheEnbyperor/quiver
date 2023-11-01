@@ -585,7 +585,7 @@ impl Connection {
                     .should_close
                     .store(true, std::sync::atomic::Ordering::Relaxed);
                 state.connection.close(true, err.to_id(), vec![]).await?;
-                return Err(err.into());
+                Err(err.into())
             }
         }
     }

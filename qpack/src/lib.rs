@@ -21,6 +21,12 @@ pub struct Headers<'a> {
     headers: Vec<Header<'a>>,
 }
 
+impl<'a> Default for Headers<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Headers<'a> {
     pub fn new() -> Self {
         Self {

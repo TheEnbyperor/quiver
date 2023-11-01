@@ -42,11 +42,7 @@ impl StreamID {
             true
         } else if is_server && (self.0 & 1 == 0) {
             true
-        } else if !is_server && (self.0 & 1 == 1) {
-            true
-        } else {
-            false
-        }
+        } else { !is_server && (self.0 & 1 == 1) }
     }
 
     pub fn can_write(&self, is_server: bool) -> bool {
@@ -54,11 +50,7 @@ impl StreamID {
             true
         } else if is_server && (self.0 & 1 == 1) {
             true
-        } else if !is_server && (self.0 & 1 == 0) {
-            true
-        } else {
-            false
-        }
+        } else { !is_server && (self.0 & 1 == 0) }
     }
 }
 
@@ -281,7 +273,7 @@ impl tokio::io::AsyncWrite for Stream {
                 std::task::Poll::Pending => std::task::Poll::Pending,
                 std::task::Poll::Ready(r) => {
                     self.async_write = None;
-                    std::task::Poll::Ready(r.map_err(|e| e.into()))
+                    std::task::Poll::Ready(r)
                 }
             };
         }
@@ -317,7 +309,7 @@ impl tokio::io::AsyncWrite for Stream {
                 std::task::Poll::Pending => std::task::Poll::Pending,
                 std::task::Poll::Ready(r) => {
                     self.async_shutdown = None;
-                    std::task::Poll::Ready(r.map(|_| ()).map_err(|e| e.into()))
+                    std::task::Poll::Ready(r.map(|_| ()))
                 }
             };
         }

@@ -4,7 +4,7 @@ pub async fn read_int<R: tokio::io::AsyncRead + Unpin>(buf: &mut R) -> std::io::
     let mut v = buf.read_u8().await? as u64;
     let length = 1usize << (v >> 6usize);
 
-    v = v & 0x3f;
+    v &= 0x3f;
     for _ in 0..length - 1 {
         v = (v << 8) + (buf.read_u8().await? as u64);
     }

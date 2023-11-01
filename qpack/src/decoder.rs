@@ -12,6 +12,12 @@ pub enum DecodeResult {
     Headers(Headers<'static>),
 }
 
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Self {

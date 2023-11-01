@@ -22,13 +22,13 @@ impl Frame {
             Self::Data(data) => {
                 crate::vli::write_int(buf, 0x00).await?;
                 crate::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                buf.write_all(data).await?;
                 Ok(())
             }
             Self::Headers(data) => {
                 crate::vli::write_int(buf, 0x01).await?;
                 crate::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                buf.write_all(data).await?;
                 Ok(())
             }
             Self::CancelPush(push_id) => {
@@ -89,7 +89,7 @@ impl Frame {
             Self::Unknown { frame_type, data } => {
                 crate::vli::write_int(buf, *frame_type).await?;
                 crate::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                buf.write_all(data).await?;
                 Ok(())
             }
         }

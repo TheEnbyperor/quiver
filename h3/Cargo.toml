@@ -17,3 +17,5 @@ tokio-bitstream-io = "0.0.7"
 quiver-qpack = { path = "../qpack" }
 quiche-tokio = { path = "../quiche_tokio" }
 
+[dev-dependencies]
+hex = "0.4.3"

@@ -413,6 +413,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitstream-io",
+ "hex",
  "log",
  "quiche-tokio",
  "quiver-qpack",

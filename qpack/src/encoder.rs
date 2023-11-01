@@ -9,6 +9,12 @@ pub struct Encoder {
     stream_index: std::collections::HashMap<u64, std::collections::VecDeque<(u64, Vec<u64>)>>,
 }
 
+impl Default for Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Encoder {
     pub fn new() -> Self {
         Self {
@@ -146,20 +152,18 @@ impl Encoder {
                 lines.push(field_lines::FieldLine::Indexed(
                     field_lines::FieldIndex::Dynamic(dynamic_index - base),
                 ));
+            } else if let Some(i) = name_index {
+                lines.push(field_lines::FieldLine::LiteralWithNameReference {
+                    must_be_literal: false,
+                    name_index: i,
+                    value: Self::encode_string(&line.value),
+                });
             } else {
-                if let Some(i) = name_index {
-                    lines.push(field_lines::FieldLine::LiteralWithNameReference {
-                        must_be_literal: false,
-                        name_index: i,
-                        value: Self::encode_string(&line.value),
-                    });
-                } else {
-                    lines.push(field_lines::FieldLine::Literal {
-                        must_be_literal: false,
-                        name: Self::encode_string(&line.name),
-                        value: Self::encode_string(&line.value),
-                    });
-                }
+                lines.push(field_lines::FieldLine::Literal {
+                    must_be_literal: false,
+                    name: Self::encode_string(&line.name),
+                    value: Self::encode_string(&line.value),
+                });
             }
         }
 
@@ -172,10 +176,7 @@ impl Encoder {
         };
 
         if required_insert_count != 0 {
-            if !self.stream_index.contains_key(&stream_id) {
-                self.stream_index
-                    .insert(stream_id, std::collections::VecDeque::new());
-            }
+            self.stream_index.entry(stream_id).or_insert_with(std::collections::VecDeque::new);
             self.stream_index
                 .get_mut(&stream_id)
                 .unwrap()

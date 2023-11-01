@@ -92,7 +92,7 @@ impl std::fmt::Debug for FieldString {
         match self {
             Self::Raw(s) => f.write_fmt(format_args!(
                 "Raw(utf8={:?}, data={:?})",
-                String::from_utf8_lossy(&s),
+                String::from_utf8_lossy(s),
                 s
             )),
             Self::Huffman(s) => f.write_fmt(format_args!("Huffman({:?})", s)),
@@ -119,7 +119,7 @@ impl PDU for FieldLines {
         util::encode_integer_async(buf, 8, self.required_insert_count).await?;
         if self.delta_base < 0 {
             buf.write_bit(true).await?;
-            util::encode_integer_async(buf, 7, (self.delta_base.abs() as u64) - 1).await?;
+            util::encode_integer_async(buf, 7, self.delta_base.unsigned_abs() - 1).await?;
         } else {
             buf.write_bit(false).await?;
             util::encode_integer_async(buf, 7, self.delta_base as u64).await?;
@@ -280,12 +280,12 @@ impl FieldString {
             Self::Raw(r) => {
                 buf.write_bit(false).await?;
                 util::encode_integer_async(buf, n, r.len() as u64).await?;
-                buf.write_bytes(&r).await?;
+                buf.write_bytes(r).await?;
             }
             Self::Huffman(r) => {
                 buf.write_bit(true).await?;
                 util::encode_integer_async(buf, n, r.len() as u64).await?;
-                buf.write_bytes(&r).await?;
+                buf.write_bytes(r).await?;
             }
         }
         Ok(())
@@ -322,7 +322,7 @@ async fn test_literal_field_line_with_name_reference() {
             name_index,
             value,
         } => {
-            assert_eq!(*must_be_literal, false);
+            assert!(!(*must_be_literal));
             if let FieldIndex::Static(i) = name_index {
                 assert_eq!(super::static_table::get_entry(*i).unwrap().name, b":path");
             } else {

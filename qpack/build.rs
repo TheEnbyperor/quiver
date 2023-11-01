@@ -30,7 +30,7 @@ impl phf_shared::FmtConst for TableEntry {
     }
 }
 
-const STATIC_TABLE: &'static [TableEntry] = &[
+const STATIC_TABLE: &[TableEntry] = &[
     TableEntry::new(b":authority", b""),
     TableEntry::new(b":path", b"/"),
     TableEntry::new(b"age", b"0"),
@@ -141,7 +141,7 @@ const STATIC_TABLE: &'static [TableEntry] = &[
     TableEntry::new(b"x-frame-options", b"sameorigin"),
 ];
 
-const HUFFMAN_TABLE: &'static [(u32, u8, u8)] = &[
+const HUFFMAN_TABLE: &[(u32, u8, u8)] = &[
     (0x1ff8, 13, 0),
     (0x7fffd8, 23, 1),
     (0xfffffe2, 28, 2),
@@ -404,22 +404,22 @@ const HUFFMAN_TABLE: &'static [(u32, u8, u8)] = &[
 fn main() {
     let path =
         std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("qpack_static_table.rs");
-    let mut file = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
 
-    write!(
+    writeln!(
         &mut file,
-        "const STATIC_TABLE: &'static [TableEntry] = &[\n"
+        "const STATIC_TABLE: &'static [TableEntry] = &["
     )
     .unwrap();
     for entry in STATIC_TABLE {
-        write!(
+        writeln!(
             &mut file,
-            "TableEntry {{name: &{:?}, value: &{:?}}},\n",
+            "TableEntry {{name: &{:?}, value: &{:?}}},",
             entry.name, entry.value
         )
         .unwrap();
     }
-    write!(&mut file, "];\n").unwrap();
+    writeln!(&mut file, "];").unwrap();
 
     let mut name_lookup = phf_codegen::Map::new();
     let mut seen_names = std::collections::HashSet::new();
@@ -430,9 +430,9 @@ fn main() {
         name_lookup.entry(entry.name, &format!("{}", i));
         seen_names.insert(entry.name);
     }
-    write!(
+    writeln!(
         &mut file,
-        "static NAME_LOOKUP: phf::Map<&'static [u8], usize> = {};\n",
+        "static NAME_LOOKUP: phf::Map<&'static [u8], usize> = {};",
         name_lookup.build()
     )
     .unwrap();
@@ -441,36 +441,36 @@ fn main() {
     for (i, entry) in STATIC_TABLE.iter().enumerate() {
         name_value_lookup.entry(entry, &format!("{}", i));
     }
-    write!(
+    writeln!(
         &mut file,
-        "static NAME_VALUE_LOOKUP: phf::Map<TableEntry, usize> = {};\n",
+        "static NAME_VALUE_LOOKUP: phf::Map<TableEntry, usize> = {};",
         name_value_lookup.build()
     )
     .unwrap();
 
     let path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("qpack_huffman.rs");
-    let mut file = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
 
     write!(&mut file, "static HUFFMAN_TREE: &'static Node = ").unwrap();
     make_huffman_node(&mut file, 0, 1);
-    write!(&mut file, ";\n").unwrap();
+    writeln!(&mut file, ";").unwrap();
 
     write!(&mut file, "static HUFFMAN_TABLE: &'static[(u8, u32)] = &[").unwrap();
     let mut huffman_table = HUFFMAN_TABLE[..HUFFMAN_TABLE.len() - 1].to_vec();
     huffman_table.sort_by_key(|(_, _, c)| *c);
     for line in huffman_table {
-        write!(&mut file, "  ({}, {}),\n", line.1, line.0).unwrap();
+        writeln!(&mut file, "  ({}, {}),", line.1, line.0).unwrap();
     }
-    write!(&mut file, "];\n").unwrap();
+    writeln!(&mut file, "];").unwrap();
 }
 
 fn make_huffman_node<W: Write>(out: &mut W, root: u32, len: u8) {
-    let left = root << 1 | 0;
+    let left = root << 1;
     let right = root << 1 | 1;
     let mut left_found = false;
     let mut right_found = false;
 
-    write!(out, "{}&Node::Node(\n", "  ".repeat((len - 1) as usize)).unwrap();
+    writeln!(out, "{}&Node::Node(", "  ".repeat((len - 1) as usize)).unwrap();
     println!("{} {}", left, right);
     for (h, l, c) in HUFFMAN_TABLE {
         if *h == left && *l == len {
@@ -481,7 +481,7 @@ fn make_huffman_node<W: Write>(out: &mut W, root: u32, len: u8) {
     if !left_found {
         make_huffman_node(out, left, len + 1);
     }
-    write!(out, ",\n").unwrap();
+    writeln!(out, ",").unwrap();
     for (h, l, c) in HUFFMAN_TABLE {
         if *h == right && *l == len {
             write!(out, "{}&Node::Terminal({})", "  ".repeat(len as usize), c).unwrap();
