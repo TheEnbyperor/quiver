@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Q Misell <q@magicalcodewit.ch>"]
 description = "Tokio async wrapper for Cloudflare Quiche"
 license = "MIT"
+repository = "https://github.com/TheEnbyperor/quiver"
 
 [dependencies]
 async-trait = "0.1.74"
