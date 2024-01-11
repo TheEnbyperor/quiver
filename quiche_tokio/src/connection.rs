@@ -1,5 +1,6 @@
 use super::stream;
 use rand::prelude::*;
+use futures::FutureExt;
 use std::ops::Deref;
 
 #[derive(Clone)]
@@ -138,7 +139,6 @@ struct InnerConnectionState {
     control_tx: tokio::sync::mpsc::Sender<Control>,
     new_stream_tx: tokio::sync::mpsc::Sender<stream::Stream>,
     new_token_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    timeout_running: bool,
 }
 
 impl Connection {
@@ -353,7 +353,6 @@ impl Connection {
             control_tx,
             new_stream_tx,
             new_token_tx,
-            timeout_running: false,
         });
 
         connection.should_send().await.unwrap();
@@ -584,14 +583,16 @@ struct PendingReceive {
 
 impl SharedConnectionState {
     fn run(self: std::sync::Arc<Self>, mut inner: InnerConnectionState) {
-        let (timeout_tx, mut timeout_rx) = tokio::sync::mpsc::channel(1);
-
         tokio::task::spawn(async move {
             let mut out = vec![0; inner.max_datagram_size];
             let mut pending_recv: Vec<PendingReceive> = vec![];
             let mut known_stream_ids = std::collections::HashSet::new();
 
             'outer: loop {
+                let timeout = match inner.conn.timeout() {
+                    Some(d) => tokio::time::sleep(d).boxed(),
+                    None => futures::future::pending().boxed()
+                };
                 tokio::select! {
                     res = inner.packet_rx.recv() => {
                         let (mut pkt, recv_info) = match res {
@@ -681,16 +682,6 @@ impl SharedConnectionState {
                                         }
                                     };
                                     packets.push((send_info, (&out[..write]).to_vec()));
-                                    if let Some(timeout) = inner.conn.timeout() {
-                                        if !inner.timeout_running {
-                                            inner.timeout_running = true;
-                                            let inner_timeout_tx = timeout_tx.clone();
-                                            tokio::task::spawn(async move {
-                                                tokio::time::sleep(timeout).await;
-                                                let _ = inner_timeout_tx.send(()).await;
-                                            });
-                                        }
-                                    }
                                     if inner.conn.is_established() {
                                         self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                                     }
@@ -737,12 +728,6 @@ impl SharedConnectionState {
                                 }
                                 inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
-                            // Control::StreamShutdown { stream_id, direction, err, resp} => {
-                            //     let _ = resp.send(
-                            //         inner.conn.stream_shutdown(stream_id, direction, err)
-                            //             .map_err(|e| e.into())
-                            //     );
-                            // }
                             Control::SetQLog(qlog) => {
                                 inner.conn.set_qlog_with_level(
                                     Box::new(qlog.qlog),
@@ -766,9 +751,8 @@ impl SharedConnectionState {
                             }
                         }
                     }
-                    _ = timeout_rx.recv() => {
+                    _ = timeout => {
                         trace!("On timeout");
-                        inner.timeout_running = false;
                         inner.conn.on_timeout();
                         inner.control_tx.send(Control::ShouldSend).await.unwrap();
                     }

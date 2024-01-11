@@ -15,4 +15,5 @@ log = "0.4.20"
 quiche = { path = "../../quiche/quiche", features = ["qlog", "boringssl-boring-crate"], version = "0.20"}
 rand = "0.8.5"
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
+futures = "0.3.30"
 
