@@ -51,26 +51,29 @@ impl PDU for EncoderInstruction {
 
     async fn decode<R: tokio::io::AsyncRead + Send + Sync + Unpin>(
         buf: &mut tokio_bitstream_io::read::BitReader<R, tokio_bitstream_io::BigEndian>,
-    ) -> std::io::Result<Self> {
+    ) -> crate::error::HttpResult<Option<Self>> {
         use tokio_bitstream_io::BitRead;
-        if buf.read_bit().await? {
+        if match crate::util::handle_http_io_error(buf.read_bit().await)? {
+            Some(b) => b,
+            None => return Ok(None)
+        } {
             // Insert with Name Reference - prefix 1
             let name_index = field_lines::FieldIndex::decode(buf, 6).await?;
             let value = field_lines::FieldString::decode(buf, 7).await?;
-            Ok(Self::InsertNameReference { name_index, value })
+            Ok(Some(Self::InsertNameReference { name_index, value }))
         } else if buf.read_bit().await? {
             // Insert with Literal Name - prefix 01
             let name = field_lines::FieldString::decode(buf, 5).await?;
             let value = field_lines::FieldString::decode(buf, 7).await?;
-            Ok(Self::InsertLiteralName { name, value })
+            Ok(Some(Self::InsertLiteralName { name, value }))
         } else if buf.read_bit().await? {
             // Set Dynamic Table Capacity - prefix 001
             let c = util::decode_integer_async(buf, 5).await?;
-            Ok(Self::SetDynamicTableCapacity(c))
+            Ok(Some(Self::SetDynamicTableCapacity(c)))
         } else {
             // Duplicate - prefix 000
             let i = util::decode_integer_async(buf, 5).await?;
-            Ok(Self::Duplicate(i))
+            Ok(Some(Self::Duplicate(i)))
         }
     }
 }
@@ -110,20 +113,23 @@ impl PDU for DecoderInstruction {
 
     async fn decode<R: tokio::io::AsyncRead + Send + Sync + Unpin>(
         buf: &mut tokio_bitstream_io::read::BitReader<R, tokio_bitstream_io::BigEndian>,
-    ) -> std::io::Result<Self> {
+    ) -> crate::error::HttpResult<Option<Self>> {
         use tokio_bitstream_io::BitRead;
-        if buf.read_bit().await? {
+        if match crate::util::handle_http_io_error(buf.read_bit().await)? {
+            Some(b) => b,
+            None => return Ok(None)
+        } {
             // Section Acknowledgment - prefix 1
             let i = util::decode_integer_async(buf, 7).await?;
-            Ok(Self::SectionAcknowledgment(i))
+            Ok(Some(Self::SectionAcknowledgment(i)))
         } else if buf.read_bit().await? {
             // Stream Cancellation - prefix 01
             let i = util::decode_integer_async(buf, 6).await?;
-            Ok(Self::StreamCancellation(i))
+            Ok(Some(Self::StreamCancellation(i)))
         } else {
             // Insert Count Increment - prefix 00
             let i = util::decode_integer_async(buf, 6).await?;
-            Ok(Self::InsertCountIncrement(i))
+            Ok(Some(Self::InsertCountIncrement(i)))
         }
     }
 }

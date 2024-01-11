@@ -52,7 +52,7 @@ impl std::error::Error for Error {}
 #[derive(Debug)]
 pub enum HttpError {
     Protocol(Error),
-    QPack(quiver_qpack::QPackError),
+    QPack(crate::qpack::QPackError),
     Transport(quiche_tokio::ConnectionError),
 }
 
@@ -92,8 +92,8 @@ impl From<Error> for HttpError {
     }
 }
 
-impl From<quiver_qpack::QPackError> for HttpError {
-    fn from(value: quiver_qpack::QPackError) -> Self {
+impl From<crate::qpack::QPackError> for HttpError {
+    fn from(value: crate::qpack::QPackError) -> Self {
         Self::QPack(value)
     }
 }

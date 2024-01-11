@@ -1,5 +1,3 @@
-#![feature(extract_if)]
-
 mod decoder;
 mod dynamic_table;
 mod encoder;
@@ -12,7 +10,7 @@ mod util;
 
 pub use decoder::{DecodeResult, Decoder};
 pub use encoder::Encoder;
-pub use error::{QPackError, QPackResult};
+pub use error::{QPackError};
 pub use field_lines::FieldLines;
 pub use instructions::{DecoderInstruction, EncoderInstruction};
 
@@ -32,6 +30,14 @@ impl<'a> Headers<'a> {
         Self {
             headers: Vec::new(),
         }
+    }
+
+    pub fn get_header_one(&self, name: &[u8]) -> Option<&Header<'a>> {
+        self.headers.iter().find(|h| h.name == name)
+    }
+
+    pub fn get_header(&self, name: &[u8]) -> Vec<&Header<'a>> {
+        self.headers.iter().filter(|h| h.name == name).collect()
     }
 
     pub fn add_header(&mut self, header: Header<'a>) {
@@ -108,7 +114,7 @@ pub trait PDU: Sized {
 
     async fn decode<R: tokio::io::AsyncRead + Send + Sync + Unpin>(
         buf: &mut tokio_bitstream_io::read::BitReader<R, tokio_bitstream_io::BigEndian>,
-    ) -> std::io::Result<Self>;
+    ) -> super::error::HttpResult<Option<Self>>;
 
     async fn encode_bytes<W: tokio::io::AsyncWrite + Send + Sync + Unpin>(
         &self,
@@ -120,7 +126,7 @@ pub trait PDU: Sized {
 
     async fn decode_bytes<R: tokio::io::AsyncRead + Send + Sync + Unpin>(
         buf: &mut R,
-    ) -> std::io::Result<Self> {
+    ) ->  super::error::HttpResult<Option<Self>> {
         let mut reader = tokio_bitstream_io::read::BitReader::new(buf);
         Self::decode(&mut reader).await
     }
@@ -131,8 +137,8 @@ pub trait PDU: Sized {
         writer.into_writer().into_inner()
     }
 
-    async fn from_bytes(data: &[u8]) -> std::io::Result<Self> {
+    async fn from_bytes(data: &[u8]) -> super::error::HttpResult<Self> {
         let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(data));
-        Self::decode(&mut reader).await
+        Self::decode(&mut reader).await.map(|e| e.unwrap())
     }
 }

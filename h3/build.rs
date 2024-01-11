@@ -451,7 +451,7 @@ fn main() {
     make_huffman_node(&mut file, 0, 1);
     writeln!(&mut file, ";").unwrap();
 
-    write!(&mut file, "static HUFFMAN_TABLE: &[(u8, u32)] = &[").unwrap();
+    write!(&mut file, "static HUFFMAN_TABLE: &[(u8, u32)] = &[\n").unwrap();
     let mut huffman_table = HUFFMAN_TABLE[..HUFFMAN_TABLE.len() - 1].to_vec();
     huffman_table.sort_by_key(|(_, _, c)| *c);
     for line in huffman_table {

@@ -1,5 +1,4 @@
-use super::{error, frames, settings, vli};
-use quiver_qpack::PDU;
+use super::{error, frames, settings, qpack, qpack::PDU};
 use tokio::io::AsyncWriteExt;
 
 const MAX_QPACK_TABLE_CAPACITY: u64 = 65535;
@@ -37,14 +36,14 @@ impl UniStreamType {
 
 #[derive(Debug)]
 pub struct Connection {
+    is_server: bool,
     next_bidi_stream_id: u64,
     next_uni_stream_id: u64,
     settings: settings::Settings,
     peer_settings: Option<settings::Settings>,
     control_stream: Option<quiche_tokio::Stream>,
-    qpack_encoder_stream: Option<quiche_tokio::Stream>,
-    qpack_decoder_stream: Option<quiche_tokio::Stream>,
-    new_peer_streams: quiche_tokio::ConnectionNewStreams,
+    new_peer_streams: Option<quiche_tokio::ConnectionRecv<quiche_tokio::Stream>>,
+    new_requests: Option<tokio::sync::mpsc::Receiver<Message>>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
 
@@ -54,8 +53,10 @@ struct SharedConnectionState {
     should_close: std::sync::atomic::AtomicBool,
     go_away: std::sync::atomic::AtomicBool,
     go_away_stream_id: std::sync::atomic::AtomicU64,
-    qpack_encoder: tokio::sync::Mutex<quiver_qpack::Encoder>,
-    qpack_decoder: tokio::sync::Mutex<quiver_qpack::Decoder>,
+    qpack_encoder_stream: tokio::sync::Mutex<Option<quiche_tokio::Stream>>,
+    qpack_decoder_stream: tokio::sync::Mutex<Option<quiche_tokio::Stream>>,
+    qpack_encoder: tokio::sync::Mutex<qpack::Encoder>,
+    qpack_decoder: tokio::sync::Mutex<qpack::Decoder>,
 }
 
 #[derive(Default)]
@@ -66,23 +67,25 @@ struct PendingPeerStreams {
 }
 
 impl Connection {
-    pub fn new(mut conn: quiche_tokio::Connection) -> Self {
+    pub fn new(mut conn: quiche_tokio::Connection, is_server: bool) -> Self {
         Connection {
+            is_server,
             next_bidi_stream_id: 0,
             next_uni_stream_id: 0,
             settings: Default::default(),
             peer_settings: None,
             control_stream: None,
-            qpack_encoder_stream: None,
-            qpack_decoder_stream: None,
-            new_peer_streams: conn.peer_streams(),
+            new_peer_streams: Some(conn.peer_streams()),
+            new_requests: None,
             shared_state: std::sync::Arc::new(SharedConnectionState {
                 connection: conn,
                 should_close: std::sync::atomic::AtomicBool::new(false),
                 go_away: std::sync::atomic::AtomicBool::new(false),
                 go_away_stream_id: std::sync::atomic::AtomicU64::new(0),
-                qpack_encoder: tokio::sync::Mutex::new(quiver_qpack::Encoder::new()),
-                qpack_decoder: tokio::sync::Mutex::new(quiver_qpack::Decoder::new()),
+                qpack_encoder_stream: tokio::sync::Mutex::new(None),
+                qpack_decoder_stream: tokio::sync::Mutex::new(None),
+                qpack_encoder: tokio::sync::Mutex::new(qpack::Encoder::new()),
+                qpack_decoder: tokio::sync::Mutex::new(qpack::Decoder::new()),
             }),
         }
     }
@@ -95,17 +98,27 @@ impl Connection {
         let qpack_encoder_stream = Self::try_result(&self.shared_state, res).await?;
         let res = self.open_uni_stream(UniStreamType::QPackDecoder).await;
         let qpack_decoder_stream = Self::try_result(&self.shared_state, res).await?;
-        self.qpack_encoder_stream = Some(qpack_encoder_stream);
-        self.qpack_decoder_stream = Some(qpack_decoder_stream);
+        self.shared_state.qpack_encoder_stream.lock().await.replace(qpack_encoder_stream);
+        self.shared_state.qpack_decoder_stream.lock().await.replace(qpack_decoder_stream);
+
+        let mut new_peer_streams = self.new_peer_streams.take().unwrap();
+        let (mut new_request_streams_tx, mut new_request_streams_rx) = tokio::sync::mpsc::channel(100);
+        let (new_requests_tx, new_requests_rx) = tokio::sync::mpsc::channel(100);
+        self.new_requests.replace(new_requests_rx);
 
         let mut pending_peer_streams = PendingPeerStreams::default();
         while self.peer_settings.is_none()
             || pending_peer_streams.qpack_encoder_stream.is_none()
             || pending_peer_streams.qpack_decoder_stream.is_none()
         {
-            let peer_stream = self.new_peer_streams.next().await?;
+            let peer_stream = match new_peer_streams.next().await? {
+                Some(s) => s,
+                None => {
+                    return Err(error::Error::MissingSettings.into())
+                }
+            };
             let res = self
-                .handle_new_stream(peer_stream, &mut pending_peer_streams)
+                .handle_new_stream(peer_stream, &mut pending_peer_streams, &mut new_request_streams_tx)
                 .await;
             Self::try_result(&self.shared_state, res).await?;
         }
@@ -129,7 +142,6 @@ impl Connection {
                 let frame = match Self::try_result(&control_loop_state, res).await {
                     Ok(Some(f)) => f,
                     Ok(None) => {
-                        warn!("Critical stream closed - peer control");
                         control_loop_state
                             .should_close
                             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -198,26 +210,21 @@ impl Connection {
                     break;
                 }
 
-                let res =
-                    quiver_qpack::EncoderInstruction::decode_bytes(&mut peer_qpack_encoder_stream)
-                        .await;
-                if let Some(true) = res
-                    .as_ref()
-                    .err()
-                    .map(|e| e.kind() == std::io::ErrorKind::UnexpectedEof)
-                {
-                    warn!("Critical stream closed - peer QPACK encoder");
-                    qpack_encoder_loop_state
-                        .should_close
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                    let _ = qpack_encoder_loop_state
-                        .connection
-                        .close(true, error::Error::ClosedCriticalStream.to_id(), vec![])
-                        .await;
-                    break;
-                }
-                let instruction = match res {
-                    Ok(i) => i,
+                let res = qpack::EncoderInstruction::decode_bytes(
+                    &mut peer_qpack_encoder_stream
+                ).await;
+                let instruction = match Self::try_result(&qpack_encoder_loop_state, res).await {
+                    Ok(Some(i)) => i,
+                    Ok(None) => {
+                        qpack_encoder_loop_state
+                            .should_close
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        let _ = qpack_encoder_loop_state
+                            .connection
+                            .close(true, error::Error::ClosedCriticalStream.to_id(), vec![])
+                            .await;
+                        break;
+                    }
                     Err(err) => {
                         warn!("Peer QPACK encoder stream decode error: {}", err);
                         qpack_encoder_loop_state
@@ -227,7 +234,7 @@ impl Connection {
                             .connection
                             .close(
                                 true,
-                                quiver_qpack::QPackError::EncoderStreamError.to_id(),
+                                qpack::QPackError::EncoderStreamError.to_id(),
                                 vec![],
                             )
                             .await;
@@ -261,26 +268,21 @@ impl Connection {
                     break;
                 }
 
-                let res =
-                    quiver_qpack::DecoderInstruction::decode_bytes(&mut peer_qpack_decoder_stream)
-                        .await;
-                if let Some(true) = res
-                    .as_ref()
-                    .err()
-                    .map(|e| e.kind() == std::io::ErrorKind::UnexpectedEof)
-                {
-                    warn!("Critical stream closed - peer QPACK decoder");
-                    qpack_decoder_loop_state
-                        .should_close
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                    let _ = qpack_decoder_loop_state
-                        .connection
-                        .close(true, error::Error::ClosedCriticalStream.to_id(), vec![])
-                        .await;
-                    break;
-                }
-                let instruction = match res {
-                    Ok(i) => i,
+                let res = qpack::DecoderInstruction::decode_bytes(
+                    &mut peer_qpack_decoder_stream
+                ).await;
+                let instruction = match Self::try_result(&qpack_decoder_loop_state, res).await {
+                    Ok(Some(i)) => i,
+                    Ok(None) => {
+                        qpack_decoder_loop_state
+                            .should_close
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        let _ = qpack_decoder_loop_state
+                            .connection
+                            .close(true, error::Error::ClosedCriticalStream.to_id(), vec![])
+                            .await;
+                        break;
+                    }
                     Err(err) => {
                         warn!("Peer QPACK decoder stream decode error: {}", err);
                         qpack_decoder_loop_state
@@ -290,7 +292,7 @@ impl Connection {
                             .connection
                             .close(
                                 true,
-                                quiver_qpack::QPackError::DecoderStreamError.to_id(),
+                                qpack::QPackError::DecoderStreamError.to_id(),
                                 vec![],
                             )
                             .await;
@@ -312,6 +314,63 @@ impl Connection {
             }
         });
 
+        if self.is_server {
+            tokio::task::spawn(async move {
+                loop {
+                    let peer_stream = match new_peer_streams.next().await {
+                        Ok(Some(s)) => s,
+                        Ok(None) => {
+                            trace!("Connection closed");
+                            break;
+                        }
+                        Err(e) => {
+                            // H3_NO_ERROR
+                            if e.to_id() == 0x100 {
+                                trace!("Connection closed");
+                                break;
+                            }
+                            warn!("Error receiving requests: {}", e);
+                            break;
+                        }
+                    };
+                    if !peer_stream.is_bidi() {
+                        warn!("Received non-BIDI stream from client after connection setup");
+                        break;
+                    }
+                    if new_request_streams_tx.send(peer_stream).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            let requests_state = self.shared_state.clone();
+            tokio::task::spawn(async move {
+                while let Some(stream) = new_request_streams_rx.recv().await {
+                    let request_tx = new_requests_tx.clone();
+                    let request_state = requests_state.clone();
+                    tokio::task::spawn(async move {
+                        let stream_id = stream.stream_id().full_stream_id();
+                        let mut stream = tokio::io::BufReader::new(stream);
+
+                        let request_headers = match Self::get_headers(&request_state, stream_id, &mut stream).await {
+                            Ok(h) => h,
+                            Err(e) => {
+                                warn!("Failed to decode request headers: {}", e);
+                                return;
+                            }
+                        };
+
+                        let request = Message {
+                            headers: request_headers,
+                            trailers: None,
+                            stream,
+                            shared_state: request_state
+                        };
+                        let _ = request_tx.send(request).await;
+                    });
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -322,11 +381,20 @@ impl Connection {
         self.shared_state
             .go_away
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        self.shared_state
+        match self.shared_state
             .connection
             .close(true, 0x100, vec![])
-            .await?;
-        Ok(())
+            .await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // H3_NO_ERROR
+                if e.to_id() == 0x100 {
+                    Ok(())
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
     }
 
     pub fn peer_go_away(&self) -> Option<u64> {
@@ -347,8 +415,8 @@ impl Connection {
 
     pub async fn send_request(
         &mut self,
-        headers: &quiver_qpack::Headers<'_>,
-    ) -> error::HttpResult<Response> {
+        headers: &qpack::Headers<'_>,
+    ) -> error::HttpResult<Message> {
         if self
             .shared_state
             .go_away
@@ -365,10 +433,10 @@ impl Connection {
             .lock()
             .await
             .encode_field(stream_id, headers);
+        Self::output_qpack_encoder_pending_commands(&self.shared_state).await?;
         let header_block_bytes = header_block.to_vec().await;
 
         let header_frame = frames::Frame::Headers(header_block_bytes);
-        self.output_qpack_encoder_pending_commands().await?;
 
         header_frame.write(&mut stream).await?;
         stream.shutdown().await?;
@@ -376,14 +444,23 @@ impl Connection {
         let mut stream = tokio::io::BufReader::new(stream);
         let response_headers =
             Self::get_headers(&self.shared_state, stream_id, &mut stream).await?;
-        self.output_qpack_deccoder_pending_commands().await?;
+        Self::output_qpack_deccoder_pending_commands(&self.shared_state).await?;
 
-        Ok(Response {
+        Ok(Message {
             headers: response_headers,
             trailers: None,
             stream,
             shared_state: self.shared_state.clone(),
         })
+    }
+
+    pub async fn next_request(&mut self) -> error::HttpResult<Option<Message>> {
+        let new_requests = match self.new_requests.as_mut() {
+            Some(n) => n,
+            None => return Err(error::Error::MissingSettings.into())
+        };
+
+        Ok(new_requests.recv().await)
     }
 
     async fn send_settings(&mut self) -> error::HttpResult<()> {
@@ -396,11 +473,12 @@ impl Connection {
         Ok(())
     }
 
-    async fn output_qpack_encoder_pending_commands(&mut self) -> error::HttpResult<()> {
-        let mut qpack_encoder = self.shared_state.qpack_encoder.lock().await;
+    async fn output_qpack_encoder_pending_commands(shared_state: &SharedConnectionState) -> error::HttpResult<()> {
+        let mut qpack_encoder = shared_state.qpack_encoder.lock().await;
         if qpack_encoder.has_pending_encoder_commands() {
-            let stream = self.qpack_encoder_stream.as_mut().unwrap();
             let commands = qpack_encoder.pending_encoder_commands();
+            let mut stream_lock = shared_state.qpack_encoder_stream.lock().await;
+            let stream = stream_lock.as_mut().unwrap();
             for command in commands {
                 command.encode_bytes(stream).await?;
             }
@@ -408,11 +486,12 @@ impl Connection {
         Ok(())
     }
 
-    async fn output_qpack_deccoder_pending_commands(&mut self) -> error::HttpResult<()> {
-        let mut qpack_decoder = self.shared_state.qpack_decoder.lock().await;
+    async fn output_qpack_deccoder_pending_commands(shared_state: &SharedConnectionState) -> error::HttpResult<()> {
+        let mut qpack_decoder = shared_state.qpack_decoder.lock().await;
         if qpack_decoder.has_pending_decoder_commands() {
-            let stream = self.qpack_decoder_stream.as_mut().unwrap();
             let commands = qpack_decoder.pending_decoder_commands();
+            let mut stream_lock = shared_state.qpack_decoder_stream.lock().await;
+            let stream = stream_lock.as_mut().unwrap();
             for command in commands {
                 command.encode_bytes(stream).await?;
             }
@@ -424,20 +503,35 @@ impl Connection {
         &mut self,
         mut stream: quiche_tokio::Stream,
         pending_peer_streams: &mut PendingPeerStreams,
+        new_request_streams_tx: &mut tokio::sync::mpsc::Sender<quiche_tokio::Stream>,
     ) -> error::HttpResult<()> {
         if stream.is_bidi() {
-            return Err(error::Error::StreamCreation.into());
+            if self.is_server {
+                let _ = new_request_streams_tx.send(stream).await;
+                return Ok(());
+            } else {
+                return Err(error::Error::StreamCreation.into());
+            }
         }
-        let stream_type = vli::read_int(&mut stream).await?;
+        let stream_type = quiver_util::vli::read_int(&mut stream).await?;
         match UniStreamType::from_type_id(stream_type) {
             UniStreamType::Control => {
+                if pending_peer_streams.control_stream.is_some() {
+                    return Err(error::Error::StreamCreation.into());
+                }
                 self.handle_control_stream(&mut stream).await?;
                 pending_peer_streams.control_stream = Some(stream);
             }
             UniStreamType::QPackEncoder => {
+                if pending_peer_streams.qpack_encoder_stream.is_some() {
+                    return Err(error::Error::StreamCreation.into());
+                }
                 pending_peer_streams.qpack_encoder_stream = Some(stream);
             }
             UniStreamType::QPackDecoder => {
+                if pending_peer_streams.qpack_decoder_stream.is_some() {
+                    return Err(error::Error::StreamCreation.into());
+                }
                 pending_peer_streams.qpack_decoder_stream = Some(stream);
             }
             _ => {}
@@ -490,7 +584,7 @@ impl Connection {
             .connection
             .new_stream(self.next_uni_stream_id, false)
             .await?;
-        crate::vli::write_int(&mut stream, stream_type.to_type_id()).await?;
+        quiver_util::vli::write_int(&mut stream, stream_type.to_type_id()).await?;
         self.next_uni_stream_id += 1;
         Ok(stream)
     }
@@ -520,7 +614,7 @@ impl Connection {
         state: &SharedConnectionState,
         stream_id: u64,
         stream: &mut R,
-    ) -> error::HttpResult<quiver_qpack::Headers<'static>> {
+    ) -> error::HttpResult<qpack::Headers<'static>> {
         let response_header_bytes = loop {
             let response_frame = match frames::Frame::read(stream).await? {
                 Some(f) => f,
@@ -552,18 +646,17 @@ impl Connection {
                 }
             }
         };
-        let response_header_block =
-            quiver_qpack::FieldLines::from_bytes(&response_header_bytes).await?;
+        let response_header_block = qpack::FieldLines::from_bytes(&response_header_bytes).await?;
 
         let mut response_headers =
             Self::decode_headers(state, stream_id, response_header_block.clone()).await?;
-        while let quiver_qpack::DecodeResult::Wait(notify) = response_headers {
+        while let qpack::DecodeResult::Wait(notify) = response_headers {
             notify.notified().await;
             response_headers =
                 Self::decode_headers(state, stream_id, response_header_block.clone()).await?;
         }
         let response_headers = match response_headers {
-            quiver_qpack::DecodeResult::Headers(h) => h,
+            qpack::DecodeResult::Headers(h) => h,
             _ => unreachable!(),
         };
 
@@ -573,8 +666,8 @@ impl Connection {
     async fn decode_headers(
         state: &SharedConnectionState,
         stream_id: u64,
-        field_lines: quiver_qpack::FieldLines,
-    ) -> error::HttpResult<quiver_qpack::DecodeResult> {
+        field_lines: qpack::FieldLines,
+    ) -> error::HttpResult<qpack::DecodeResult> {
         match state
             .qpack_decoder
             .lock()
@@ -591,16 +684,20 @@ impl Connection {
             }
         }
     }
+
+    pub fn inner_connection(&self) -> &quiche_tokio::Connection {
+        &self.shared_state.connection
+    }
 }
 
-pub struct Response {
-    headers: quiver_qpack::Headers<'static>,
-    trailers: Option<quiver_qpack::Headers<'static>>,
+pub struct Message {
+    headers: qpack::Headers<'static>,
+    trailers: Option<qpack::Headers<'static>>,
     stream: tokio::io::BufReader<quiche_tokio::Stream>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
 
-impl std::fmt::Debug for Response {
+impl std::fmt::Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Response")
             .field("headers", &self.headers)
@@ -609,20 +706,25 @@ impl std::fmt::Debug for Response {
     }
 }
 
-impl Response {
+impl Message {
+    pub fn headers(&self) -> &qpack::Headers<'static> {
+        &self.headers
+    }
+
     pub fn stream_id(&self) -> u64 {
         self.stream.get_ref().stream_id().full_stream_id()
     }
 
     async fn process_trailers(&mut self, trailers_bytes: Vec<u8>) -> error::HttpResult<()> {
-        let trailers_block = quiver_qpack::FieldLines::from_bytes(&trailers_bytes).await?;
+        let trailers_block = qpack::FieldLines::from_bytes(&trailers_bytes).await?;
         let mut trailers = Connection::decode_headers(
             &self.shared_state,
             self.stream_id(),
             trailers_block.clone(),
         )
         .await?;
-        while let quiver_qpack::DecodeResult::Wait(notify) = trailers {
+        Connection::output_qpack_deccoder_pending_commands(&self.shared_state).await?;
+        while let qpack::DecodeResult::Wait(notify) = trailers {
             notify.notified().await;
             trailers = Connection::decode_headers(
                 &self.shared_state,
@@ -630,9 +732,10 @@ impl Response {
                 trailers_block.clone(),
             )
             .await?;
+            Connection::output_qpack_deccoder_pending_commands(&self.shared_state).await?;
         }
         let trailers = match trailers {
-            quiver_qpack::DecodeResult::Headers(h) => h,
+            qpack::DecodeResult::Headers(h) => h,
             _ => unreachable!(),
         };
         self.trailers = Some(trailers);
@@ -679,5 +782,33 @@ impl Response {
             out.extend(data.into_iter());
         }
         Ok(out)
+    }
+
+    pub async fn send_headers(&mut self, headers: &qpack::Headers<'_>) -> error::HttpResult<()> {
+        let stream_id = self.stream.get_ref().stream_id().full_stream_id();
+        let header_block = self
+            .shared_state
+            .qpack_encoder
+            .lock()
+            .await
+            .encode_field(stream_id, headers);
+        Connection::output_qpack_encoder_pending_commands(&self.shared_state).await?;
+        let header_block_bytes = header_block.to_vec().await;
+
+        let header_frame = frames::Frame::Headers(header_block_bytes);
+
+        header_frame.write(&mut self.stream).await?;
+        Ok(())
+    }
+
+    pub async fn send_data<D: Into<Vec<u8>>>(&mut self, data: D) -> error::HttpResult<()> {
+        let data_frame = frames::Frame::Data(data.into());
+        data_frame.write(&mut self.stream).await?;
+        Ok(())
+    }
+
+    pub async fn done(&mut self) -> error::HttpResult<()> {
+        self.stream.shutdown().await?;
+        Ok(())
     }
 }

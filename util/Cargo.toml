@@ -1,0 +1,14 @@
+[package]
+name = "quiver-util"
+version = "0.1.0"
+edition = "2021"
+authors = ["Q Misell <q@magicalcodewit.ch>"]
+license = "MIT"
+publish = false
+repository = "https://github.com/TheEnbyperor/quiver"
+
+[dependencies]
+tokio = { version = "1.33.0", features = ["io-util", "macros", "sync", "rt-multi-thread"] }
+
+[dev-dependencies]
+hex = "0.4.3"

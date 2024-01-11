@@ -7,16 +7,21 @@ description = "Implementation of RFC 9113 HTTP/3"
 license = "MIT"
 repository = "https://github.com/TheEnbyperor/quiver"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-trait = "0.1.74"
 bitstream-io = "1.7.0"
 log = "0.4.20"
-tokio = { version = "1.33.0", features = [] }
+tokio = { version = "1.33.0", features = ["io-util", "macros", "sync", "rt-multi-thread"] }
 tokio-bitstream-io = "0.0.7"
-quiver-qpack = { path = "../qpack", version = "0.1" }
+phf = { version = "0.11.2", default-features = false }
+phf_shared = "0.11.2"
 quiche-tokio = { path = "../quiche_tokio", version = "0.1" }
+quiver-util = { path = "../util", version = "0.1" }
 
 [dev-dependencies]
 hex = "0.4.3"
+
+[build-dependencies]
+phf = { version = "0.11.2", default-features = false }
+phf_codegen = "0.11.2"
+phf_shared = "0.11.2"

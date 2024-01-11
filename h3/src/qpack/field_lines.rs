@@ -132,7 +132,7 @@ impl PDU for FieldLines {
 
     async fn decode<R: tokio::io::AsyncRead + Send + Sync + Unpin>(
         buf: &mut tokio_bitstream_io::read::BitReader<R, tokio_bitstream_io::BigEndian>,
-    ) -> std::io::Result<Self> {
+    ) -> crate::error::HttpResult<Option<Self>> {
         use tokio_bitstream_io::BitRead;
         let required_insert_count = util::decode_integer_async(buf, 8).await?;
         let delta_base_sign = buf.read_bit().await?;
@@ -146,11 +146,11 @@ impl PDU for FieldLines {
         while let Some(line) = FieldLine::decode(buf).await? {
             lines.push(line);
         }
-        Ok(Self {
+        Ok(Some(Self {
             required_insert_count,
             delta_base,
             lines,
-        })
+        }))
     }
 }
 

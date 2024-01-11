@@ -26,7 +26,7 @@ impl Settings {
     pub async fn read<R: tokio::io::AsyncRead + Unpin>(buf: &mut R) -> error::HttpResult<Self> {
         let mut out = Self::default();
         loop {
-            let identifier = match crate::vli::read_int(buf).await {
+            let identifier = match quiver_util::vli::read_int(buf).await {
                 Ok(i) => i,
                 Err(err) => {
                     if err.kind() == std::io::ErrorKind::UnexpectedEof {
@@ -35,7 +35,7 @@ impl Settings {
                     return Err(error::Error::Frame.into());
                 }
             };
-            let value = crate::vli::read_int(buf)
+            let value = quiver_util::vli::read_int(buf)
                 .await
                 .map_err(|_| error::Error::Frame)?;
 

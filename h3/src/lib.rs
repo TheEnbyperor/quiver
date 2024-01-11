@@ -1,3 +1,4 @@
+#![feature(extract_if)]
 #[macro_use]
 extern crate log;
 
@@ -5,7 +6,9 @@ mod connection;
 mod error;
 mod frames;
 mod settings;
-mod vli;
+mod util;
+mod qpack;
 
+pub use error::{HttpResult, HttpError};
 pub use connection::Connection;
-pub use quiver_qpack::{Header, Headers};
+pub use qpack::{Header, Headers};
