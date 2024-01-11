@@ -311,7 +311,7 @@ impl FieldString {
 async fn test_literal_field_line_with_name_reference() {
     let data = hex::decode("0000510b2f696e6465782e68746d6c").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let field_lines = FieldLines::decode(&mut reader).await.unwrap();
+    let field_lines = FieldLines::decode(&mut reader).await.unwrap().unwrap();
 
     assert_eq!(field_lines.required_insert_count, 0);
     assert_eq!(field_lines.delta_base, 0);
@@ -347,7 +347,7 @@ async fn test_literal_field_line_with_name_reference() {
 async fn test_indexed_field_line_with_post_base_index() {
     let data = hex::decode("03811011").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let field_lines = FieldLines::decode(&mut reader).await.unwrap();
+    let field_lines = FieldLines::decode(&mut reader).await.unwrap().unwrap();
 
     assert_eq!(field_lines.required_insert_count, 3);
     assert_eq!(field_lines.delta_base, -2);

@@ -138,7 +138,7 @@ impl PDU for DecoderInstruction {
 async fn test_set_dynamic_table_capacity() {
     let data = hex::decode("3fbd01").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap();
+    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap().unwrap();
     if let EncoderInstruction::SetDynamicTableCapacity(c) = encoder_instruction {
         assert_eq!(c, 220);
     } else {
@@ -155,7 +155,7 @@ async fn test_set_dynamic_table_capacity() {
 async fn test_insert_with_name_reference_static_table() {
     let data = hex::decode("c00f7777772e6578616d706c652e636f6d").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap();
+    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap().unwrap();
     if let EncoderInstruction::InsertNameReference { name_index, value } = &encoder_instruction {
         if let field_lines::FieldIndex::Static(i) = name_index {
             assert_eq!(
@@ -184,7 +184,7 @@ async fn test_insert_with_name_reference_static_table() {
 async fn test_insert_with_literal_name() {
     let data = hex::decode("4a637573746f6d2d6b65790c637573746f6d2d76616c7565").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap();
+    let encoder_instruction = EncoderInstruction::decode(&mut reader).await.unwrap().unwrap();
     if let EncoderInstruction::InsertLiteralName { name, value } = &encoder_instruction {
         if let field_lines::FieldString::Raw(v) = name {
             assert_eq!(v, b"custom-key");
@@ -210,7 +210,7 @@ async fn test_insert_with_literal_name() {
 async fn test_section_acknowledgement() {
     let data = hex::decode("84").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let decoder_instruction = DecoderInstruction::decode(&mut reader).await.unwrap();
+    let decoder_instruction = DecoderInstruction::decode(&mut reader).await.unwrap().unwrap();
     if let DecoderInstruction::SectionAcknowledgment(c) = decoder_instruction {
         assert_eq!(c, 4);
     } else {
@@ -227,7 +227,7 @@ async fn test_section_acknowledgement() {
 async fn test_insert_count_increment() {
     let data = hex::decode("01").unwrap();
     let mut reader = tokio_bitstream_io::BitReader::new(std::io::Cursor::new(&data));
-    let decoder_instruction = DecoderInstruction::decode(&mut reader).await.unwrap();
+    let decoder_instruction = DecoderInstruction::decode(&mut reader).await.unwrap().unwrap();
     if let DecoderInstruction::InsertCountIncrement(c) = decoder_instruction {
         assert_eq!(c, 1);
     } else {
