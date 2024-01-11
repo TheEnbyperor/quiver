@@ -1,2 +1,4 @@
 target/
 example/connection.qlog
+example/cert.crt
+example/cert.key

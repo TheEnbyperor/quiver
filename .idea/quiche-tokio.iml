@@ -6,6 +6,11 @@
       <sourceFolder url="file://$MODULE_DIR$/qpack/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/quiche_tokio/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/example/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/bdp_tokens/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/h3-util/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/util/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/example/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

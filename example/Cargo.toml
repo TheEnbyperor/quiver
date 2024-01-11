@@ -9,10 +9,12 @@ repository = "https://github.com/TheEnbyperor/quiver"
 
 [dependencies]
 quiver-h3 = { path = "../h3" }
+quiver-bdp-tokens = { path = "../bdp_tokens" }
 quiche-tokio = { path = "../quiche_tokio" }
 url = "2.4.1"
 log = "0.4.20"
 pretty_env_logger = "0.5.0"
 rand = "0.8.5"
-quiche = "0.18.0"
+#quiche = "0.18.0"
+quiche = { path = "../../quiche/quiche" }
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }

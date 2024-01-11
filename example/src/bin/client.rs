@@ -1,9 +1,7 @@
-#![feature(extract_if)]
+
 
 #[macro_use]
 extern crate log;
-
-use rand::prelude::*;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
@@ -11,21 +9,22 @@ const MAX_DATAGRAM_SIZE: usize = 1350;
 async fn main() {
     pretty_env_logger::init();
 
-    let url = url::Url::parse("https://cloudflare-quic.com/").unwrap();
+    let url = url::Url::parse("https://localhost/").unwrap();
     let url_host = url.host_str().unwrap();
-    let url_port = url.port_or_known_default().unwrap();
-    let url_authority = format!("{}:{}", url_host, url_port);
+    // let url_port = url.port_or_known_default().unwrap();
+    // let url_authority = format!("{}:{}", url_host, url_port);
     let url_domain = url.domain().unwrap();
-    let peer_addrs = tokio::net::lookup_host(url_authority)
-        .await
-        .unwrap()
-        .collect::<Vec<_>>();
-    let mut rng = thread_rng();
-    let peer_addr = *peer_addrs.choose(&mut rng).unwrap();
-    drop(rng);
+    // let peer_addrs = tokio::net::lookup_host(url_authority)
+    //     .await
+    //     .unwrap()
+    //     .collect::<Vec<_>>();
+    // let mut rng = thread_rng();
+    // let peer_addr = *peer_addrs.choose(&mut rng).unwrap();
+    // drop(rng);
+    let peer_addr = "[::1]:4443".parse().unwrap();
 
     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
-    config.verify_peer(true);
+    config.verify_peer(false);
     config.set_application_protos(&[b"h3"]).unwrap();
     config.set_max_idle_timeout(5000);
     config.set_max_recv_udp_payload_size(MAX_DATAGRAM_SIZE);
@@ -47,14 +46,32 @@ async fn main() {
     };
 
     info!("Setting up QUIC connection to {}", url);
-    let connection =
+    let mut connection =
         quiche_tokio::Connection::connect(peer_addr, config, Some(url_domain), Some(qlog_conf))
             .await
             .unwrap();
     connection.established().await.unwrap();
     info!("QUIC connection open");
 
-    let mut h3_connection = quiver_h3::Connection::new(connection);
+    let trans_params = connection.transport_parameters().await.unwrap();
+    let server_bdp_tokens = trans_params.bdp_tokens;
+
+    if !server_bdp_tokens {
+        warn!("Server not using BDP tokens");
+    } else {
+        info!("Server using BDP tokens");
+        let mut new_token_recv = connection.new_tokens();
+        tokio::task::spawn(async move {
+            while let Some(token) = new_token_recv.next().await.unwrap() {
+                trace!("New token received: {:02x?}", token);
+                let mut bdp_token_buf = std::io::Cursor::new(token);
+                let bdp_token = quiver_bdp_tokens::BDPToken::decode(&mut bdp_token_buf).await.unwrap();
+                info!("BDP Token: {:#?}", bdp_token);
+            }
+        });
+    }
+
+    let mut h3_connection = quiver_h3::Connection::new(connection, false);
     h3_connection.setup().await.unwrap();
     info!("HTTP/3 connection open");
 
@@ -69,7 +86,7 @@ async fn main() {
     let mut response = h3_connection.send_request(&headers).await.unwrap();
     info!("Got response: {:#?}", response);
     let response_data = response.data().await.unwrap();
-    println!("{}", String::from_utf8(response_data).unwrap());
+    println!("Response data: {}", String::from_utf8(response_data).unwrap());
 
     h3_connection.close().await.unwrap();
     info!("HTTP/3 and QUIC connection closed");

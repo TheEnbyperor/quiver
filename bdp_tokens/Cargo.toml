@@ -1,0 +1,11 @@
+[package]
+name = "quiver-bdp-tokens"
+version = "0.1.0"
+edition = "2021"
+authors = ["Q Misell <q@magicalcodewit.ch>"]
+license = "MIT"
+repository = "https://github.com/TheEnbyperor/quiver"
+
+[dependencies]
+quiver-util = { path = "../util", version = "0.1" }
+tokio = { version = "1.33.0", features = [] }
