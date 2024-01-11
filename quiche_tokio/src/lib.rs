@@ -6,7 +6,8 @@ extern crate log;
 mod connection;
 mod qlog;
 mod stream;
+mod socket;
 
-pub use connection::{Connection, ConnectionError, ConnectionNewStreams, QLogConfig};
+pub use connection::{Connection, NewConnections, ConnectionError, ConnectionRecv, QLogConfig};
 pub use qlog::QLog;
 pub use stream::{Stream, StreamID};

@@ -9,8 +9,10 @@ repository = "https://github.com/TheEnbyperor/quiver"
 
 [dependencies]
 async-trait = "0.1.74"
+libc = "0.2.150"
 log = "0.4.20"
-quiche = { version = "0.18.0", features = ["qlog"] }
+#quiche = { version = "0.18.0", features = ["qlog"] }
+quiche = { path = "../../quiche/quiche", features = ["qlog", "boringssl-boring-crate"], version = "0.20"}
 rand = "0.8.5"
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
 

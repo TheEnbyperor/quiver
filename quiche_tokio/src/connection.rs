@@ -97,12 +97,9 @@ pub(super) enum Control {
         len: usize,
         resp: tokio::sync::oneshot::Sender<ConnectionResult<(Vec<u8>, bool)>>,
     },
-    // StreamShutdown {
-    //     stream_id: u64,
-    //     direction: quiche::Shutdown,
-    //     err: u64,
-    //     resp: tokio::sync::oneshot::Sender<ConnectionResult<()>>,
-    // },
+    SendNewToken {
+        token: Vec<u8>
+    }
 }
 
 #[derive(Debug)]
@@ -111,6 +108,7 @@ pub struct Connection {
     control_tx: tokio::sync::mpsc::Sender<Control>,
     shared_state: std::sync::Arc<SharedConnectionState>,
     new_stream_rx: Option<tokio::sync::mpsc::Receiver<stream::Stream>>,
+    new_token_rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
 pub struct QLogConfig {
@@ -126,20 +124,129 @@ pub(super) struct SharedConnectionState {
     connection_established_notify: tokio::sync::Mutex<Vec<std::sync::Arc<tokio::sync::Notify>>>,
     connection_closed: std::sync::atomic::AtomicBool,
     connection_closed_notify: tokio::sync::Mutex<Vec<std::sync::Arc<tokio::sync::Notify>>>,
+    application_protocol: tokio::sync::RwLock<Vec<u8>>,
+    transport_parameters: tokio::sync::RwLock<Option<quiche::TransportParams>>,
     pub(super) connection_error: tokio::sync::RwLock<Option<ConnectionError>>,
 }
 
 struct InnerConnectionState {
     conn: quiche::Connection,
-    socket: tokio::net::UdpSocket,
-    local_addr: std::net::SocketAddr,
+    socket: std::sync::Arc<tokio::net::UdpSocket>,
+    packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
     max_datagram_size: usize,
     control_rx: tokio::sync::mpsc::Receiver<Control>,
     control_tx: tokio::sync::mpsc::Sender<Control>,
     new_stream_tx: tokio::sync::mpsc::Sender<stream::Stream>,
+    new_token_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    timeout_running: bool,
 }
 
 impl Connection {
+    pub async fn accept(
+        bind_addr: std::net::SocketAddr,
+        mut config: quiche::Config,
+    ) -> ConnectionResult<NewConnections> {
+        let socket = std::sync::Arc::new(
+            tokio::net::UdpSocket::bind(bind_addr).await?
+        );
+        let local_addr = socket.local_addr()?;
+        debug!("Listening on {}", local_addr);
+
+        let (new_cons_tx, new_cons_rx) = tokio::sync::mpsc::channel(100);
+
+        tokio::task::spawn(async move {
+            let mut buf = [0; 65535];
+            let mut clients: std::collections::HashMap<
+                quiche::ConnectionId<'static>,
+                tokio::sync::mpsc::Sender<(Vec<u8>, quiche::RecvInfo)>,
+            > = std::collections::HashMap::new();
+
+            loop {
+                let (len, from) = match socket.recv_from(&mut buf).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        error!("Failed to received UDP packet: {}", e);
+                        break;
+                    }
+                };
+
+                let pkt_buf = &mut buf[..len];
+
+                let hdr = match quiche::Header::from_slice(
+                    pkt_buf, quiche::MAX_CONN_ID_LEN,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Parsing packet header failed: {:?}", e);
+                        continue;
+                    },
+                };
+
+                let tx = if !clients.contains_key(&hdr.dcid) {
+                    if hdr.ty != quiche::Type::Initial {
+                        warn!("Packet is not Initial");
+                        continue;
+                    }
+
+                    if !quiche::version_is_supported(hdr.version) {
+                        let vneg_socket = socket.clone();
+
+                        tokio::task::spawn(async move {
+                            let mut buf = [0; 65535];
+                            let len = quiche::negotiate_version(&hdr.scid, &hdr.dcid, &mut buf)
+                                    .unwrap();
+                            let out = &buf[..len];
+
+                            if let Err(e) = vneg_socket.send_to(out, from).await {
+                                error!("Failed to send packet: {}", e)
+                            }
+                        });
+                        continue;
+                    }
+
+                    let mut cid = [0; quiche::MAX_CONN_ID_LEN];
+                    thread_rng().fill(&mut cid[..]);
+                    let cid = quiche::ConnectionId::from_vec(cid.to_vec());
+
+                    debug!("New connection: dcid={:?} scid={:?}", hdr.dcid, cid);
+
+                    let conn = quiche::accept(
+                        &cid,
+                        None,
+                        local_addr,
+                        from,
+                        &mut config,
+                    ).unwrap();
+                    let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
+                    let connection = Self::setup_connection(
+                        conn, socket.clone(), packet_rx,  None
+                    ).await;
+
+                    if let Err(_) = new_cons_tx.send(connection).await {
+                        break;
+                    }
+                    clients.insert(cid, packet_tx.clone());
+                    packet_tx
+                } else {
+                    clients.get(&hdr.dcid).unwrap().to_owned()
+                };
+
+                let recv_info = quiche::RecvInfo {
+                    to: local_addr,
+                    from,
+                };
+
+                if let Err(_) = tx.send((pkt_buf.to_vec(), recv_info)).await {
+                    clients.remove(&hdr.dcid);
+                }
+            }
+        });
+
+        Ok(NewConnections {
+            new_connections: new_cons_rx
+        })
+    }
+
     pub async fn connect(
         peer_addr: std::net::SocketAddr,
         mut config: quiche::Config,
@@ -161,7 +268,44 @@ impl Connection {
         let local_addr = socket.local_addr()?;
         debug!("Connecting to {} from {}", peer_addr, local_addr);
 
-        let mut conn = quiche::connect(server_name, &cid, local_addr, peer_addr, &mut config)?;
+        let conn = quiche::connect(server_name, &cid, local_addr, peer_addr, &mut config)?;
+
+        let socket = std::sync::Arc::new(socket);
+        let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
+
+        let recv_socket = socket.clone();
+        tokio::task::spawn(async move {
+            let mut buf = [0; 65535];
+            loop {
+                let (len, addr) = match recv_socket.recv_from(&mut buf).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to read UDP packet: {}", e);
+                        break;
+                    }
+                };
+                let recv_info = quiche::RecvInfo {
+                    from: addr,
+                    to: local_addr
+                };
+
+                if let Err(_) = packet_tx.send((buf[..len].to_vec(), recv_info)).await {
+                    break
+                }
+            }
+        });
+
+        Ok(Self::setup_connection(
+            conn, socket, packet_rx, qlog
+        ).await)
+    }
+
+    async fn setup_connection(
+        mut conn: quiche::Connection,
+        socket: std::sync::Arc<tokio::net::UdpSocket>,
+        packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
+        qlog: Option<QLogConfig>,
+    ) -> Self {
         if let Some(qlog) = qlog {
             conn.set_qlog_with_level(
                 Box::new(qlog.qlog),
@@ -174,6 +318,7 @@ impl Connection {
 
         let (control_tx, control_rx) = tokio::sync::mpsc::channel(25);
         let (new_stream_tx, new_stream_rx) = tokio::sync::mpsc::channel(25);
+        let (new_token_tx, new_token_rx) = tokio::sync::mpsc::channel(25);
 
         let shared_connection_state = std::sync::Arc::new(SharedConnectionState {
             connection_established: std::sync::atomic::AtomicBool::new(false),
@@ -181,6 +326,8 @@ impl Connection {
             connection_closed: std::sync::atomic::AtomicBool::new(false),
             connection_closed_notify: tokio::sync::Mutex::new(Vec::new()),
             connection_error: tokio::sync::RwLock::new(None),
+            application_protocol: tokio::sync::RwLock::new(Vec::new()),
+            transport_parameters: tokio::sync::RwLock::new(None),
         });
 
         let connection = Connection {
@@ -188,21 +335,24 @@ impl Connection {
             control_tx: control_tx.clone(),
             shared_state: shared_connection_state.clone(),
             new_stream_rx: Some(new_stream_rx),
+            new_token_rx: Some(new_token_rx),
         };
 
         shared_connection_state.run(InnerConnectionState {
             conn,
             socket,
-            local_addr,
+            packet_rx,
             max_datagram_size,
             control_rx,
             control_tx,
             new_stream_tx,
+            new_token_tx,
+            timeout_running: false,
         });
 
         connection.should_send().await.unwrap();
 
-        Ok(connection)
+        connection
     }
 
     async fn send_control(&self, control: Control) -> ConnectionResult<()> {
@@ -288,12 +438,26 @@ impl Connection {
         Ok(())
     }
 
+    pub async fn application_protocol(&self) -> Vec<u8> {
+        self.shared_state.application_protocol.read().await.clone()
+    }
+
+    pub async fn transport_parameters(&self) -> Option<quiche::TransportParams> {
+        self.shared_state.transport_parameters.read().await.clone()
+    }
+
     pub async fn set_qlog(&self, qlog: QLogConfig) -> ConnectionResult<()> {
         self.send_control(Control::SetQLog(qlog)).await
     }
 
     pub async fn send_ack_eliciting(&self) -> ConnectionResult<()> {
         self.send_control(Control::SendAckEliciting).await
+    }
+
+    pub async fn send_new_token(&self, token: Vec<u8>) -> ConnectionResult<()> {
+        self.send_control(Control::SendNewToken {
+            token
+        }).await
     }
 
     pub async fn close(&self, app: bool, err: u64, reason: Vec<u8>) -> ConnectionResult<()> {
@@ -332,47 +496,79 @@ impl Connection {
         ))
     }
 
-    pub async fn next_peer_stream(&mut self) -> ConnectionResult<stream::Stream> {
+    pub async fn next_peer_stream(&mut self) -> ConnectionResult<Option<stream::Stream>> {
         match self.new_stream_rx.as_mut().unwrap().recv().await {
-            Some(s) => Ok(s),
-            None => Err(self
-                .shared_state
-                .connection_error
-                .read()
-                .await
-                .clone()
-                .unwrap_or(std::io::ErrorKind::ConnectionReset.into())),
+            Some(s) => Ok(Some(s)),
+            None => {
+                let err = self.shared_state.connection_error.read().await.clone();
+                match err {
+                    None => Ok(None),
+                    Some(e) => Err(e)
+                }
+            }
         }
     }
 
-    pub fn peer_streams(&mut self) -> ConnectionNewStreams {
-        ConnectionNewStreams {
-            stream_rx: self.new_stream_rx.take().unwrap(),
+    pub fn peer_streams(&mut self) -> ConnectionRecv<stream::Stream> {
+        ConnectionRecv {
+            rx: self.new_stream_rx.take().unwrap(),
+            shared_state: self.shared_state.clone(),
+        }
+    }
+
+    pub async fn next_new_token(&mut self) -> ConnectionResult<Option<Vec<u8>>> {
+        match self.new_token_rx.as_mut().unwrap().recv().await {
+            Some(s) => Ok(Some(s)),
+            None => {
+                let err = self.shared_state.connection_error.read().await.clone();
+                match err {
+                    None => Ok(None),
+                    Some(e) => Err(e)
+                }
+            }
+        }
+    }
+
+    pub fn new_tokens(&mut self) -> ConnectionRecv<Vec<u8>> {
+        ConnectionRecv {
+            rx: self.new_token_rx.take().unwrap(),
             shared_state: self.shared_state.clone(),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ConnectionNewStreams {
-    stream_rx: tokio::sync::mpsc::Receiver<stream::Stream>,
+pub struct ConnectionRecv<T> {
+    rx: tokio::sync::mpsc::Receiver<T>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
 
-impl ConnectionNewStreams {
-    pub async fn next(&mut self) -> ConnectionResult<stream::Stream> {
-        match self.stream_rx.recv().await {
-            Some(s) => Ok(s),
-            None => Err(self
-                .shared_state
-                .connection_error
-                .read()
-                .await
-                .clone()
-                .unwrap_or(std::io::ErrorKind::ConnectionReset.into())),
+impl<T> ConnectionRecv<T> {
+    pub async fn next(&mut self) -> ConnectionResult<Option<T>> {
+        match self.rx.recv().await {
+            Some(s) => Ok(Some(s)),
+            None => {
+                let err = self.shared_state.connection_error.read().await.clone();
+                match err {
+                    None => Ok(None),
+                    Some(e) => Err(e)
+                }
+            },
         }
     }
 }
+
+#[derive(Debug)]
+pub struct NewConnections {
+    new_connections: tokio::sync::mpsc::Receiver<Connection>
+}
+
+impl NewConnections {
+    pub async fn next(&mut self) -> Option<Connection> {
+        self.new_connections.recv().await
+    }
+}
+
 
 struct PendingReceive {
     stream_id: u64,
@@ -385,27 +581,22 @@ impl SharedConnectionState {
         let (timeout_tx, mut timeout_rx) = tokio::sync::mpsc::channel(1);
 
         tokio::task::spawn(async move {
-            let mut buf = [0; 65535];
             let mut out = vec![0; inner.max_datagram_size];
             let mut pending_recv: Vec<PendingReceive> = vec![];
             let mut known_stream_ids = std::collections::HashSet::new();
 
             'outer: loop {
                 tokio::select! {
-                    res = inner.socket.recv_from(&mut buf) => {
-                        let (len, addr) = match res {
-                            Ok(v) => v,
-                            Err(e) => {
-                                self.set_error(e.into()).await;
+                    res = inner.packet_rx.recv() => {
+                        let (mut pkt, recv_info) = match res {
+                            Some(v) => v,
+                            None => {
+                                self.set_error(std::io::ErrorKind::ConnectionReset.into()).await;
                                 break;
                             }
                         };
-                        let recv_info = quiche::RecvInfo {
-                            from: addr,
-                            to: inner.local_addr
-                        };
 
-                        let read = match inner.conn.recv(&mut buf[..len], recv_info) {
+                        let read = match inner.conn.recv(&mut pkt, recv_info) {
                             Ok(v) => v,
                             Err(quiche::Error::Done) => {
                                 continue;
@@ -417,7 +608,7 @@ impl SharedConnectionState {
                         };
                         trace!("Received {} bytes", read);
                         if inner.conn.is_established() {
-                            self.set_established().await;
+                            self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                         }
                         inner.control_tx.send(Control::ShouldSend).await.unwrap();
 
@@ -457,6 +648,12 @@ impl SharedConnectionState {
                                 self.clone(), inner.control_tx.clone(),
                             )).await;
                         }
+
+                        while let Some(token) = inner.conn.recv_new_token() {
+                           let _ = inner.new_token_tx.try_send(token);
+                        }
+
+                        trace!("Receive done");
                     }
                     c = inner.control_rx.recv() => {
                         let c = match c {
@@ -464,7 +661,8 @@ impl SharedConnectionState {
                             None => break
                         };
                         match c {
-                            Control::ShouldSend => if !inner.conn.is_draining() {
+                            Control::ShouldSend => {
+                                let mut packets = vec![];
                                 loop {
                                     let (write, send_info) = match inner.conn.send(&mut out) {
                                         Ok(v) => v,
@@ -476,21 +674,27 @@ impl SharedConnectionState {
                                             break 'outer;
                                         }
                                     };
-                                    if inner.conn.is_established() {
-                                        self.set_established().await;
+                                    packets.push((send_info, (&out[..write]).to_vec()));
+                                    if let Some(timeout) = inner.conn.timeout() {
+                                        if !inner.timeout_running {
+                                            inner.timeout_running = true;
+                                            let inner_timeout_tx = timeout_tx.clone();
+                                            tokio::task::spawn(async move {
+                                                tokio::time::sleep(timeout).await;
+                                                let _ = inner_timeout_tx.send(()).await;
+                                            });
+                                        }
                                     }
-                                    if let Err(e) = inner.socket.send_to(&out[..write], &send_info.to).await {
+                                    if inner.conn.is_established() {
+                                        self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
+                                    }
+                                }
+                                for (send_info, packet) in &packets {
+                                    if let Err(e) = inner.socket.send_to(packet, &send_info.to).await {
                                         self.set_error(e.into()).await;
                                         break;
                                     }
-                                    trace!("Sent {} bytes", write);
-                                    if let Some(timeout) = inner.conn.timeout() {
-                                        let inner_timeout_tx = timeout_tx.clone();
-                                        tokio::task::spawn(async move {
-                                            tokio::time::sleep(timeout).await;
-                                            let _ = inner_timeout_tx.send(()).await;
-                                        });
-                                    }
+                                    trace!("Sent {} bytes", packet.len());
                                 }
                             },
                             Control::SendAckEliciting => {
@@ -498,12 +702,14 @@ impl SharedConnectionState {
                                     self.set_error(e.into()).await;
                                     break;
                                 }
+                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                             Control::StreamSend { stream_id, data, fin, resp} => {
                                 let _ = resp.send(
                                     inner.conn.stream_send(stream_id, &data, fin)
                                         .map_err(|e| e.into())
                                 );
+                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                             Control::StreamRecv { stream_id, len, resp } => {
                                 let mut buf = vec![0u8; len];
@@ -523,6 +729,7 @@ impl SharedConnectionState {
                                         let _ = resp.send(Err(e.into()));
                                     }
                                 }
+                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                             // Control::StreamShutdown { stream_id, direction, err, resp} => {
                             //     let _ = resp.send(
@@ -538,16 +745,24 @@ impl SharedConnectionState {
                                     qlog.level,
                                 );
                             }
+                            Control::SendNewToken {
+                                token
+                            } => {
+                                inner.conn.send_new_token(&token);
+                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                            }
                             Control::Close { app, err, reason } => {
                                 if let Err(e) = inner.conn.close(app, err, &reason) {
                                     self.set_error(e.into()).await;
                                     break;
                                 }
+                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                         }
                     }
                     _ = timeout_rx.recv() => {
                         trace!("On timeout");
+                        inner.timeout_running = false;
                         inner.conn.on_timeout();
                         inner.control_tx.send(Control::ShouldSend).await.unwrap();
                     }
@@ -579,6 +794,7 @@ impl SharedConnectionState {
                     break;
                 }
             }
+            trace!("Connection closed");
         });
     }
 
@@ -600,10 +816,14 @@ impl SharedConnectionState {
         self.notify_connection_established().await;
     }
 
-    async fn set_established(&self) {
-        self.connection_established
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        self.notify_connection_established().await;
+    async fn set_established(&self, alpn: &[u8], transport_params: Option<&quiche::TransportParams>) {
+        if !self.connection_established.load(std::sync::atomic::Ordering::Relaxed) {
+            self.connection_established
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            *self.application_protocol.write().await = alpn.to_vec();
+            *self.transport_parameters.write().await = transport_params.map(|p| p.to_owned());
+            self.notify_connection_established().await;
+        }
     }
 
     async fn set_closed(&self) {

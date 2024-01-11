@@ -139,11 +139,16 @@ impl Stream {
             .await
             .is_err()
         {
-            warn!(
-                "Connection error: {:?}",
-                shared_state.connection_error.read().await
-            );
-            return Err(std::io::ErrorKind::ConnectionReset.into());
+            match shared_state.connection_error.read().await.clone() {
+                Some(err) => {
+                    trace!("Connection error: {:?}", err);
+                    return Err(std::io::Error::other(err.clone()));
+                }
+                None => {
+                    read_fin.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return Ok(vec![]);
+                }
+            }
         }
         match rx.await {
             Ok(Ok((r, fin))) => {
@@ -154,11 +159,16 @@ impl Stream {
             }
             Ok(Err(e)) => Err(e.into()),
             Err(_) => {
-                warn!(
-                    "Connection error: {:?}",
-                    shared_state.connection_error.read().await
-                );
-                Err(std::io::ErrorKind::ConnectionReset.into())
+                match shared_state.connection_error.read().await.clone() {
+                    Some(err) => {
+                        trace!("Connection error: {:?}", err);
+                        return Err(std::io::Error::other(err.clone()));
+                    }
+                    None => {
+                        read_fin.store(true, std::sync::atomic::Ordering::Relaxed);
+                        return Ok(vec![]);
+                    }
+                }
             }
         }
     }
@@ -181,20 +191,28 @@ impl Stream {
             .await
             .is_err()
         {
-            warn!(
-                "Connection error: {:?}",
-                shared_state.connection_error.read().await
-            );
-            return Err(std::io::ErrorKind::ConnectionReset.into());
+            match shared_state.connection_error.read().await.clone() {
+                Some(err) => {
+                    trace!("Connection error: {:?}", err);
+                    return Err(std::io::Error::other(err.clone()));
+                }
+                None => {
+                    return Ok(0);
+                }
+            }
         }
         match rx.await {
             Ok(r) => r.map_err(|e| e.into()),
             Err(_) => {
-                warn!(
-                    "Connection error: {:?}",
-                    shared_state.connection_error.read().await
-                );
-                Err(std::io::ErrorKind::ConnectionReset.into())
+                match shared_state.connection_error.read().await.clone() {
+                    Some(err) => {
+                        trace!("Connection error: {:?}", err);
+                        return Err(std::io::Error::other(err.clone()));
+                    }
+                    None => {
+                        return Ok(0);
+                    }
+                }
             }
         }
     }
