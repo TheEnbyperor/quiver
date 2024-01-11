@@ -3,11 +3,24 @@
 #[macro_use]
 extern crate log;
 
+use clap::Parser;
+
 const MAX_DATAGRAM_SIZE: usize = 1350;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    peer_addr: std::net::SocketAddr,
+    #[arg(short, long)]
+    local_addr: Option<std::net::SocketAddr>,
+}
 
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+
+    let args = Args::parse();
 
     let url = url::Url::parse("https://localhost/").unwrap();
     let url_host = url.host_str().unwrap();
@@ -21,7 +34,6 @@ async fn main() {
     // let mut rng = thread_rng();
     // let peer_addr = *peer_addrs.choose(&mut rng).unwrap();
     // drop(rng);
-    let peer_addr = "[::1]:4443".parse().unwrap();
 
     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
     config.verify_peer(false);
@@ -45,11 +57,11 @@ async fn main() {
         level: quiche::QlogLevel::Extra,
     };
 
-    info!("Setting up QUIC connection to {}", url);
+    info!("Setting up QUIC connection to {} - {}", url, args.peer_addr);
     let mut connection =
-        quiche_tokio::Connection::connect(peer_addr, config, Some(url_domain), Some(qlog_conf))
-            .await
-            .unwrap();
+        quiche_tokio::Connection::connect(
+            args.peer_addr, config, Some(url_domain), args.local_addr, Some(qlog_conf)
+        ).await.unwrap();
     connection.established().await.unwrap();
     info!("QUIC connection open");
 

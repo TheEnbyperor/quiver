@@ -5,7 +5,10 @@ extern crate log;
 
 mod connection;
 mod qlog;
+
 mod stream;
+
+#[cfg(linux)]
 mod socket;
 
 pub use connection::{Connection, NewConnections, ConnectionError, ConnectionRecv, QLogConfig};

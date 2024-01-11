@@ -18,3 +18,4 @@ rand = "0.8.5"
 #quiche = "0.18.0"
 quiche = { path = "../../quiche/quiche" }
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
+clap = { version = "4", features = ["derive"] }

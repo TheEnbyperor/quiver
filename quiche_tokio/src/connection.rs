@@ -251,14 +251,20 @@ impl Connection {
         peer_addr: std::net::SocketAddr,
         mut config: quiche::Config,
         server_name: Option<&str>,
+        bind_addr: Option<std::net::SocketAddr>,
         qlog: Option<QLogConfig>,
     ) -> ConnectionResult<Self> {
-        let bind_addr: std::net::SocketAddr = match peer_addr {
-            std::net::SocketAddr::V4(_) => "0.0.0.0:0",
-            std::net::SocketAddr::V6(_) => "[::]:0",
-        }
-        .parse()
-        .unwrap();
+        let bind_addr: std::net::SocketAddr = match bind_addr {
+            Some(b) => b,
+            None => match peer_addr {
+                std::net::SocketAddr::V4(_) => std::net::SocketAddr::V4(std::net::SocketAddrV4::new(
+                    std::net::Ipv4Addr::UNSPECIFIED, 0,
+                )),
+                std::net::SocketAddr::V6(_) => std::net::SocketAddr::V6(std::net::SocketAddrV6::new(
+                    std::net::Ipv6Addr::UNSPECIFIED, 0, 0, 0
+                )),
+            }
+        };
 
         let mut cid = [0; quiche::MAX_CONN_ID_LEN];
         thread_rng().fill(&mut cid[..]);
