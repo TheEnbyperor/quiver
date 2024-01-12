@@ -53,7 +53,7 @@ async fn main() {
                 description: String::new(),
                 level: quiche::QlogLevel::Extra,
             };
-            connection.set_qlog(qlog_conf);
+            connection.set_qlog(qlog_conf).await.unwrap();
 
             connection.established().await.unwrap();
             let alpn = connection.application_protocol().await;

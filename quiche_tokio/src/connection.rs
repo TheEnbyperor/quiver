@@ -347,7 +347,10 @@ impl Connection {
             transport_parameters: tokio::sync::RwLock::new(None),
         });
 
+        let scid = scid.into_owned();
+
         let connection = Connection {
+            scid: scid.clone(),
             is_server: conn.is_server(),
             control_tx: control_tx.clone(),
             shared_state: shared_connection_state.clone(),
@@ -357,7 +360,7 @@ impl Connection {
 
         shared_connection_state.run(InnerConnectionState {
             conn,
-            scid: scid.into_owned(),
+            scid,
             socket,
             packet_rx,
             max_datagram_size,
