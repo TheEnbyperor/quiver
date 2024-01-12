@@ -2,3 +2,5 @@ target/
 connection.qlog
 example/cert.crt
 example/cert.key
+example/100MB.bin
+example/1GB.bin
