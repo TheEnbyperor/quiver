@@ -104,6 +104,8 @@ async fn main() {
         info!("Got {} bytes of data", data.len());
     }
 
+    info!("Receive done");
+
     h3_connection.close().await.unwrap();
     info!("HTTP/3 and QUIC connection closed");
 }

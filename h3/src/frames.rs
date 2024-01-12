@@ -20,15 +20,15 @@ impl Frame {
     ) -> error::HttpResult<()> {
         match self {
             Self::Data(data) => {
-                quiver_util::vli::write_int(buf, 0x00).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x00).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(data).await)?;
                 Ok(())
             }
             Self::Headers(data) => {
-                quiver_util::vli::write_int(buf, 0x01).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x01).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(data).await)?;
                 Ok(())
             }
             Self::CancelPush(push_id) => {
@@ -36,17 +36,17 @@ impl Frame {
                 quiver_util::vli::write_int(&mut data, *push_id).await?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x03).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x03).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(&data).await)?;
 
                 Ok(())
             }
             Self::Settings(settings) => {
                 let data = settings.to_vec();
-                quiver_util::vli::write_int(buf, 0x04).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x04).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(&data).await)?;
                 Ok(())
             }
             Self::PushPromise {
@@ -57,10 +57,12 @@ impl Frame {
                 quiver_util::vli::write_int(&mut data, *push_id).await?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x05).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64 + field_lines.len() as u64).await?;
-                buf.write_all(&data).await?;
-                buf.write_all(field_lines).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x05).await)?;
+                crate::util::handle_http_io_error(
+                    quiver_util::vli::write_int(buf, data.len() as u64 + field_lines.len() as u64).await
+                )?;
+                crate::util::handle_http_io_error(buf.write_all(&data).await)?;
+                crate::util::handle_http_io_error(buf.write_all(field_lines).await)?;
 
                 Ok(())
             }
@@ -69,9 +71,9 @@ impl Frame {
                 quiver_util::vli::write_int(&mut data, *stream_id).await?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x07).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x07).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(&data).await)?;
 
                 Ok(())
             }
@@ -80,16 +82,16 @@ impl Frame {
                 quiver_util::vli::write_int(&mut data, *max_push_id).await?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x0d).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(&data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, 0x0d).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(&data).await)?;
 
                 Ok(())
             }
             Self::Unknown { frame_type, data } => {
-                quiver_util::vli::write_int(buf, *frame_type).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
-                buf.write_all(data).await?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, *frame_type).await)?;
+                crate::util::handle_http_io_error(quiver_util::vli::write_int(buf, data.len() as u64).await)?;
+                crate::util::handle_http_io_error(buf.write_all(data).await)?;
                 Ok(())
             }
         }
@@ -102,12 +104,10 @@ impl Frame {
             Some(f) => f,
             None => return Ok(None)
         };
-        let length: usize = quiver_util::vli::read_int(buf)
-            .await?
-            .try_into()
-            .map_err(|_| error::Error::Frame)?;
+        let length: usize = crate::util::handle_http_io_error(quiver_util::vli::read_int(buf).await)?
+            .try_into().map_err(|_| error::Error::Frame)?;
         let mut data = vec![0u8; length];
-        buf.read_exact(&mut data).await?;
+        crate::util::handle_http_io_error(buf.read_exact(&mut data).await)?;
         Ok(Some(match frame_type {
             0x00 => Self::Data(data),
             0x01 => Self::Headers(data),

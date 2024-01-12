@@ -131,6 +131,7 @@ pub(super) struct SharedConnectionState {
 }
 
 struct InnerConnectionState {
+    scid: quiche::ConnectionId<'static>,
     conn: quiche::Connection,
     socket: std::sync::Arc<tokio::net::UdpSocket>,
     packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
@@ -219,7 +220,7 @@ impl Connection {
                     ).unwrap();
                     let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
                     let connection = Self::setup_connection(
-                        conn, socket.clone(), packet_rx,  None
+                        conn, cid.clone(), socket.clone(), packet_rx,  None
                     ).await;
 
                     if let Err(_) = new_cons_tx.send(connection).await {
@@ -302,12 +303,13 @@ impl Connection {
         });
 
         Ok(Self::setup_connection(
-            conn, socket, packet_rx, qlog
+            conn, cid, socket, packet_rx, qlog
         ).await)
     }
 
     async fn setup_connection(
         mut conn: quiche::Connection,
+        scid: quiche::ConnectionId<'static>,
         socket: std::sync::Arc<tokio::net::UdpSocket>,
         packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
         qlog: Option<QLogConfig>,
@@ -346,6 +348,7 @@ impl Connection {
 
         shared_connection_state.run(InnerConnectionState {
             conn,
+            scid,
             socket,
             packet_rx,
             max_datagram_size,
@@ -613,7 +616,7 @@ impl SharedConnectionState {
                                 break;
                             },
                         };
-                        trace!("Received {} bytes", read);
+                        trace!("{:?} Received {} bytes", inner.scid, read);
                         if inner.conn.is_established() {
                             self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                         }
@@ -660,7 +663,7 @@ impl SharedConnectionState {
                            let _ = inner.new_token_tx.try_send(token);
                         }
 
-                        trace!("Receive done");
+                        trace!("{:?} Receive done", inner.scid);
                     }
                     c = inner.control_rx.recv() => {
                         let c = match c {
@@ -691,7 +694,7 @@ impl SharedConnectionState {
                                         self.set_error(e.into()).await;
                                         break;
                                     }
-                                    trace!("Sent {} bytes", packet.len());
+                                    trace!("{:?} Sent {} bytes", inner.scid, packet.len());
                                 }
                             },
                             Control::SendAckEliciting => {
@@ -752,7 +755,7 @@ impl SharedConnectionState {
                         }
                     }
                     _ = timeout => {
-                        trace!("On timeout");
+                        trace!("{:?} On timeout", inner.scid);
                         inner.conn.on_timeout();
                         inner.control_tx.send(Control::ShouldSend).await.unwrap();
                     }
@@ -784,7 +787,7 @@ impl SharedConnectionState {
                     break;
                 }
             }
-            trace!("Connection closed");
+            trace!("{:?} Connection closed", inner.scid);
         });
     }
 

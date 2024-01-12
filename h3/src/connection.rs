@@ -43,7 +43,7 @@ pub struct Connection {
     peer_settings: Option<settings::Settings>,
     control_stream: Option<quiche_tokio::Stream>,
     new_peer_streams: Option<quiche_tokio::ConnectionRecv<quiche_tokio::Stream>>,
-    new_requests: Option<tokio::sync::mpsc::Receiver<Message>>,
+    new_requests: Option<tokio::sync::mpsc::Receiver<error::HttpResult<Message>>>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
 
@@ -330,14 +330,16 @@ impl Connection {
                                 break;
                             }
                             warn!("Error receiving requests: {}", e);
+                            let _ = new_request_streams_tx.send(Err(e.into())).await;
                             break;
                         }
                     };
                     if !peer_stream.is_bidi() {
                         warn!("Received non-BIDI stream from client after connection setup");
+                        let _ = new_request_streams_tx.send(Err(error::Error::GeneralProtocol.into())).await;
                         break;
                     }
-                    if new_request_streams_tx.send(peer_stream).await.is_err() {
+                    if new_request_streams_tx.send(Ok(peer_stream)).await.is_err() {
                         break;
                     }
                 }
@@ -345,28 +347,35 @@ impl Connection {
             let requests_state = self.shared_state.clone();
             tokio::task::spawn(async move {
                 while let Some(stream) = new_request_streams_rx.recv().await {
-                    let request_tx = new_requests_tx.clone();
-                    let request_state = requests_state.clone();
-                    tokio::task::spawn(async move {
-                        let stream_id = stream.stream_id().full_stream_id();
-                        let mut stream = tokio::io::BufReader::new(stream);
+                    match stream {
+                        Ok(stream) => {
+                            let request_tx = new_requests_tx.clone();
+                            let request_state = requests_state.clone();
+                            tokio::task::spawn(async move {
+                                let stream_id = stream.stream_id().full_stream_id();
+                                let mut stream = tokio::io::BufReader::new(stream);
 
-                        let request_headers = match Self::get_headers(&request_state, stream_id, &mut stream).await {
-                            Ok(h) => h,
-                            Err(e) => {
-                                warn!("Failed to decode request headers: {}", e);
-                                return;
-                            }
-                        };
+                                let request_headers = match Self::get_headers(&request_state, stream_id, &mut stream).await {
+                                    Ok(h) => h,
+                                    Err(e) => {
+                                        warn!("Failed to decode request headers: {}", e);
+                                        return;
+                                    }
+                                };
 
-                        let request = Message {
-                            headers: request_headers,
-                            trailers: None,
-                            stream,
-                            shared_state: request_state
-                        };
-                        let _ = request_tx.send(request).await;
-                    });
+                                let request = Message {
+                                    headers: request_headers,
+                                    trailers: None,
+                                    stream,
+                                    shared_state: request_state
+                                };
+                                let _ = request_tx.send(Ok(request)).await;
+                            });
+                        }
+                        Err(err) => {
+                            let _ = new_requests_tx.send(Err(err)).await;
+                        }
+                    }
                 }
             });
         }
@@ -460,7 +469,7 @@ impl Connection {
             None => return Err(error::Error::MissingSettings.into())
         };
 
-        Ok(new_requests.recv().await)
+        new_requests.recv().await.transpose()
     }
 
     async fn send_settings(&mut self) -> error::HttpResult<()> {
@@ -503,11 +512,11 @@ impl Connection {
         &mut self,
         mut stream: quiche_tokio::Stream,
         pending_peer_streams: &mut PendingPeerStreams,
-        new_request_streams_tx: &mut tokio::sync::mpsc::Sender<quiche_tokio::Stream>,
+        new_request_streams_tx: &mut tokio::sync::mpsc::Sender<error::HttpResult<quiche_tokio::Stream>>,
     ) -> error::HttpResult<()> {
         if stream.is_bidi() {
             if self.is_server {
-                let _ = new_request_streams_tx.send(stream).await;
+                let _ = new_request_streams_tx.send(Ok(stream)).await;
                 return Ok(());
             } else {
                 return Err(error::Error::StreamCreation.into());
