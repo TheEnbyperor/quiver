@@ -14,6 +14,8 @@ struct Args {
     peer_addr: std::net::SocketAddr,
     #[arg(short, long)]
     local_addr: Option<std::net::SocketAddr>,
+    #[arg(default_value = "/")]
+    path: String,
 }
 
 #[tokio::main]
@@ -91,14 +93,16 @@ async fn main() {
     headers.add(b":method", b"GET");
     headers.add(b":scheme", b"https");
     headers.add(b":authority", url_host.as_bytes());
-    headers.add(b":path", b"/");
+    headers.add(b":path", args.path.as_bytes());
     headers.add(b"user-agent", b"quiche-tokio");
 
     info!("Sending request: {:#?}", headers);
     let mut response = h3_connection.send_request(&headers).await.unwrap();
     info!("Got response: {:#?}", response);
-    let response_data = response.data().await.unwrap();
-    println!("Response data: {}", String::from_utf8(response_data).unwrap());
+
+    while let Some(data) = response.get_next_data().await.unwrap() {
+        info!("Got {} bytes of data", data.len());
+    }
 
     h3_connection.close().await.unwrap();
     info!("HTTP/3 and QUIC connection closed");
