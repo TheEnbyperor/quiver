@@ -713,10 +713,12 @@ impl SharedConnectionState {
                                 inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                             Control::StreamSend { stream_id, data, fin, resp} => {
-                                let _ = resp.send(
-                                    inner.conn.stream_send(stream_id, &data, fin)
-                                        .map_err(|e| e.into())
-                                );
+                                let sent = match inner.conn.stream_send(stream_id, &data, fin) {
+                                    Ok(s) => Ok(s),
+                                    Err(quiche::Error::Done) => Ok(0),
+                                    Err(e) => Err(e.into())
+                                }
+                                let _ = resp.send(sent);
                                 inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
                             Control::StreamRecv { stream_id, len, resp } => {
