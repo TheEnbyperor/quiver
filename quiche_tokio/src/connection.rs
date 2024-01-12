@@ -6,7 +6,7 @@ use std::ops::Deref;
 #[derive(Clone)]
 pub enum ConnectionError {
     Quic(quiche::Error),
-    Io(std::io::ErrorKind),
+    Io((std::io::ErrorKind, Option<std::sync::Arc<Box<dyn std::error::Error + Send + Sync>>>)),
     Connection(quiche::ConnectionError),
 }
 
@@ -24,7 +24,7 @@ impl std::fmt::Debug for ConnectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Quic(q) => f.write_fmt(format_args!("QUIC({:?})", q)),
-            Self::Io(e) => f.write_fmt(format_args!("IO({:?})", e)),
+            Self::Io(e) => f.write_fmt(format_args!("IO({:?}, {:?})", e.0, e.1)),
             Self::Connection(e) => f.write_fmt(format_args!(
                 "Connection(is_app={}, error_code={:x}, reason={})",
                 e.is_app,
@@ -67,21 +67,20 @@ impl From<std::io::Error> for ConnectionError {
                 .downcast::<ConnectionError>().unwrap();
             err
         } else {
-            Self::Io(value.kind())
+            Self::Io((value.kind(), value.into_inner().map(std::sync::Arc::new)))
         }
     }
 }
 
 impl From<std::io::ErrorKind> for ConnectionError {
     fn from(value: std::io::ErrorKind) -> Self {
-        Self::Io(value)
+        Self::Io((value, None))
     }
 }
 
 impl From<ConnectionError> for std::io::Error {
     fn from(value: ConnectionError) -> Self {
         match value {
-            ConnectionError::Io(k) => std::io::Error::new(k, ""),
             o => std::io::Error::new(std::io::ErrorKind::Other, o),
         }
     }

@@ -59,7 +59,7 @@ pub enum HttpError {
 impl HttpError {
     pub fn is_eof(&self) -> bool {
         if let Self::Transport(quiche_tokio::ConnectionError::Io(err)) = &self {
-            *err == std::io::ErrorKind::UnexpectedEof
+            err.0 == std::io::ErrorKind::UnexpectedEof
         } else {
             false
         }
@@ -106,7 +106,7 @@ impl From<quiche_tokio::ConnectionError> for HttpError {
 
 impl From<std::io::Error> for HttpError {
     fn from(value: std::io::Error) -> Self {
-        Self::Transport(quiche_tokio::ConnectionError::Io(value.kind()))
+        Self::Transport(value.into())
     }
 }
 
