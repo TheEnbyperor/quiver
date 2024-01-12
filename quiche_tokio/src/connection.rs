@@ -307,9 +307,9 @@ impl Connection {
         ).await)
     }
 
-    async fn setup_connection(
+    async fn setup_connection<'a>(
         mut conn: quiche::Connection,
-        scid: quiche::ConnectionId<'static>,
+        scid: quiche::ConnectionId<'a>,
         socket: std::sync::Arc<tokio::net::UdpSocket>,
         packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
         qlog: Option<QLogConfig>,
@@ -348,7 +348,7 @@ impl Connection {
 
         shared_connection_state.run(InnerConnectionState {
             conn,
-            scid,
+            scid: scid.into_owned(),
             socket,
             packet_rx,
             max_datagram_size,

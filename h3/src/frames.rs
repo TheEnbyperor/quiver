@@ -105,6 +105,7 @@ impl Frame {
             None => return Ok(None)
         };
         let length: usize = crate::util::handle_http_io_error(quiver_util::vli::read_int(buf).await)?
+            .ok_or(std::io::Error::from(std::io::ErrorKind::UnexpectedEof))?
             .try_into().map_err(|_| error::Error::Frame)?;
         let mut data = vec![0u8; length];
         crate::util::handle_http_io_error(buf.read_exact(&mut data).await)?;
