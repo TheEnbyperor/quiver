@@ -10,5 +10,5 @@ mod util;
 mod qpack;
 
 pub use error::{HttpResult, HttpError};
-pub use connection::Connection;
+pub use connection::{Connection, Message};
 pub use qpack::{Header, Headers};
