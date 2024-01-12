@@ -1,5 +1,5 @@
 target/
-connection.qlog
+*.qlog
 example/cert.crt
 example/cert.key
 example/1MB.bin

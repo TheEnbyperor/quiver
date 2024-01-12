@@ -7,5 +7,12 @@ license = "MIT"
 repository = "https://github.com/TheEnbyperor/quiver"
 
 [dependencies]
+chrono = "0.4.31"
+hmac = "0.12.1"
 quiver-util = { path = "../util", version = "0.1" }
+sha2 = "0.10.8"
 tokio = { version = "1.33.0", features = [] }
+quiche = { path = "../../quiche/quiche" }
+byteorder = "1.5.0"
+digest = "0.10.7"
+subtle = "2.5.0"

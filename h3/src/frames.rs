@@ -20,32 +20,32 @@ impl Frame {
     ) -> error::HttpResult<()> {
         match self {
             Self::Data(data) => {
-                quiver_util::vli::write_int(buf, 0x00).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x00u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(data).await?;
                 Ok(())
             }
             Self::Headers(data) => {
-                quiver_util::vli::write_int(buf, 0x01).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x01u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(data).await?;
                 Ok(())
             }
             Self::CancelPush(push_id) => {
                 let mut data = std::io::Cursor::new(Vec::new());
-                quiver_util::vli::write_int(&mut data, *push_id).await?;
+                quiver_util::vli::write_int_async(&mut data, *push_id).await?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x03).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x03u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(&data).await?;
 
                 Ok(())
             }
             Self::Settings(settings) => {
                 let data = settings.to_vec();
-                quiver_util::vli::write_int(buf, 0x04).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x04u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(&data).await?;
                 Ok(())
             }
@@ -54,11 +54,11 @@ impl Frame {
                 field_lines,
             } => {
                 let mut data = std::io::Cursor::new(Vec::new());
-                quiver_util::vli::write_int(&mut data, *push_id).await?;
+                quiver_util::vli::write_int(&mut data, *push_id)?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x05).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64 + field_lines.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x05u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64 + field_lines.len() as u64).await?;
                 buf.write_all(&data).await?;
                 buf.write_all(field_lines).await?;
 
@@ -66,29 +66,29 @@ impl Frame {
             }
             Self::GoAway(stream_id) => {
                 let mut data = std::io::Cursor::new(Vec::new());
-                quiver_util::vli::write_int(&mut data, *stream_id).await?;
+                quiver_util::vli::write_int(&mut data, *stream_id)?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x07).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x07u8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(&data).await?;
 
                 Ok(())
             }
             Self::MaxPushID(max_push_id) => {
                 let mut data = std::io::Cursor::new(Vec::new());
-                quiver_util::vli::write_int(&mut data, *max_push_id).await?;
+                quiver_util::vli::write_int(&mut data, *max_push_id)?;
                 let data = data.into_inner();
 
-                quiver_util::vli::write_int(buf, 0x0d).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, 0x0du8).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(&data).await?;
 
                 Ok(())
             }
             Self::Unknown { frame_type, data } => {
-                quiver_util::vli::write_int(buf, *frame_type).await?;
-                quiver_util::vli::write_int(buf, data.len() as u64).await?;
+                quiver_util::vli::write_int_async(buf, *frame_type).await?;
+                quiver_util::vli::write_int_async(buf, data.len() as u64).await?;
                 buf.write_all(data).await?;
                 Ok(())
             }
@@ -98,11 +98,11 @@ impl Frame {
     pub async fn read<R: tokio::io::AsyncRead + Unpin>(
         buf: &mut R,
     ) -> error::HttpResult<Option<Self>> {
-        let frame_type = match crate::util::handle_http_io_error(quiver_util::vli::read_int(buf).await)? {
+        let frame_type = match crate::util::handle_http_io_error(quiver_util::vli::read_int_async(buf).await)? {
             Some(f) => f,
             None => return Ok(None)
         };
-        let length: usize = quiver_util::vli::read_int(buf).await?
+        let length = quiver_util::vli::read_int_async::<usize, _>(buf).await?
             .try_into().map_err(|_| error::Error::Frame)?;
         let mut data = vec![0u8; length];
         buf.read_exact(&mut data).await?;
@@ -111,7 +111,7 @@ impl Frame {
             0x01 => Self::Headers(data),
             0x03 => {
                 let mut cur = std::io::Cursor::new(data);
-                let stream_id = quiver_util::vli::read_int(&mut cur).await?;
+                let stream_id = quiver_util::vli::read_int(&mut cur)?;
                 if cur.position() as usize != length {
                     return Err(error::Error::Frame.into());
                 }
@@ -119,7 +119,7 @@ impl Frame {
             }
             0x04 => {
                 let mut cur = std::io::Cursor::new(data);
-                let settings = settings::Settings::read(&mut cur).await?;
+                let settings = settings::Settings::read(&mut cur)?;
                 if cur.position() as usize != length {
                     return Err(error::Error::Frame.into());
                 }
@@ -127,7 +127,7 @@ impl Frame {
             }
             0x05 => {
                 let mut cur = std::io::Cursor::new(data);
-                let push_id = quiver_util::vli::read_int(&mut cur).await?;
+                let push_id = quiver_util::vli::read_int(&mut cur)?;
                 let pos = cur.position() as usize;
                 let field_lines = cur.into_inner()[pos..].to_vec();
                 Self::PushPromise {
@@ -137,7 +137,7 @@ impl Frame {
             }
             0x07 => {
                 let mut cur = std::io::Cursor::new(data);
-                let stream_id = quiver_util::vli::read_int(&mut cur).await?;
+                let stream_id = quiver_util::vli::read_int(&mut cur)?;
                 if cur.position() as usize != length {
                     return Err(error::Error::Frame.into());
                 }
@@ -145,7 +145,7 @@ impl Frame {
             }
             0x0d => {
                 let mut cur = std::io::Cursor::new(data);
-                let max_push_id = quiver_util::vli::read_int(&mut cur).await?;
+                let max_push_id = quiver_util::vli::read_int(&mut cur)?;
                 if cur.position() as usize != length {
                     return Err(error::Error::Frame.into());
                 }

@@ -19,3 +19,5 @@ rand = "0.8.5"
 quiche = { path = "../../quiche/quiche" }
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
 clap = { version = "4", features = ["derive"] }
+indicatif = "0.17.7"
+chrono = "0.4.31"

@@ -18,12 +18,10 @@ struct Args {
     path: String,
 }
 
-#[tokio::main]
-async fn main() {
-    pretty_env_logger::init();
-
-    let args = Args::parse();
-
+async fn send_request(
+    cid: &str, peer_addr: std::net::SocketAddr, local_addr: Option<std::net::SocketAddr>,
+    path: &str, bdp_token: Option<quiver_bdp_tokens::BDPToken>
+) -> Option<quiver_bdp_tokens::BDPToken> {
     let url = url::Url::parse("https://localhost/").unwrap();
     let url_host = url.host_str().unwrap();
     // let url_port = url.port_or_known_default().unwrap();
@@ -52,7 +50,7 @@ async fn main() {
     config.set_disable_active_migration(true);
     config.enable_resume(false);
 
-    let qlog = quiche_tokio::QLog::new("./connection.qlog").await.unwrap();
+    let qlog = quiche_tokio::QLog::new(format!("./connection-{}.qlog", cid)).await.unwrap();
     let qlog_conf = quiche_tokio::QLogConfig {
         qlog,
         title: url.to_string(),
@@ -60,22 +58,33 @@ async fn main() {
         level: quiche::QlogLevel::Extra,
     };
 
-    info!("Setting up QUIC connection to {} - {}", url, args.peer_addr);
+    let bdp_token_bytes = match bdp_token {
+        Some(t) => {
+            let mut bdp_token_buf = std::io::Cursor::new(Vec::new());
+            t.encode(&mut bdp_token_buf).unwrap();
+            Some(bdp_token_buf.into_inner())
+        }
+        None => None
+    };
+
+    info!("Setting up QUIC connection to {} - {}", url, peer_addr);
     let mut connection =
         quiche_tokio::Connection::connect(
-            args.peer_addr, config, Some(url_domain), args.local_addr, Some(qlog_conf)
+            peer_addr, config, Some(url_domain), local_addr, bdp_token_bytes.as_deref(), Some(qlog_conf)
         ).await.unwrap();
     connection.established().await.unwrap();
     info!("QUIC connection open");
 
     let trans_params = connection.transport_parameters().await.unwrap();
     let server_bdp_tokens = trans_params.bdp_tokens;
+    let last_bdp_token = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
     if !server_bdp_tokens {
         warn!("Server not using BDP tokens");
     } else {
         info!("Server using BDP tokens");
         let mut new_token_recv = connection.new_tokens();
+        let new_token_mtx = last_bdp_token.clone();
         tokio::task::spawn(async move {
             while let Some(token) = match new_token_recv.next().await {
                 Ok(r) => r,
@@ -89,8 +98,9 @@ async fn main() {
             } {
                 trace!("New token received: {:02x?}", token);
                 let mut bdp_token_buf = std::io::Cursor::new(token);
-                let bdp_token = quiver_bdp_tokens::BDPToken::decode(&mut bdp_token_buf).await.unwrap();
-                info!("BDP Token: {:#?}", bdp_token);
+                let bdp_token = quiver_bdp_tokens::BDPToken::decode(&mut bdp_token_buf).unwrap();
+                info!("BDP Token: {:?}", bdp_token);
+                new_token_mtx.lock().await.replace(bdp_token);
             }
         });
     }
@@ -103,19 +113,47 @@ async fn main() {
     headers.add(b":method", b"GET");
     headers.add(b":scheme", b"https");
     headers.add(b":authority", url_host.as_bytes());
-    headers.add(b":path", args.path.as_bytes());
+    headers.add(b":path", path.as_bytes());
     headers.add(b"user-agent", b"quiche-tokio");
 
     info!("Sending request: {:#?}", headers);
     let mut response = h3_connection.send_request(&headers).await.unwrap();
     info!("Got response: {:#?}", response);
 
+    let download_progress = indicatif::ProgressBar::new_spinner();
+
+    let mut total = 0;
     while let Some(data) = response.get_next_data().await.unwrap() {
-        info!("Got {} bytes of data", data.len());
+        total += data.len();
+        download_progress.set_message(format!("Downloaded {}", indicatif::HumanBytes(total as u64)))
     }
 
+    download_progress.finish();
     info!("Receive done");
 
     h3_connection.close().await.unwrap();
     info!("HTTP/3 and QUIC connection closed");
+
+    let out = last_bdp_token.lock().await.take();
+    out
+}
+
+#[tokio::main]
+async fn main() {
+    pretty_env_logger::init();
+
+    let args = Args::parse();
+
+    let bdp_token = send_request(
+        "1", args.peer_addr, args.local_addr, &args.path, None
+    ).await;
+
+    if let Some(bdp_token) = bdp_token {
+        info!("Retrying connection with BDP token");
+        send_request(
+            "2", args.peer_addr, args.local_addr, &args.path, Some(bdp_token)
+        ).await;
+    } else {
+        warn!("Didn't receive a BDP token from the server");
+    }
 }

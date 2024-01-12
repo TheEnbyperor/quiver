@@ -10,6 +10,8 @@ const FILE_PATH_10_MB: &'static str = "./10MB.bin";
 const FILE_PATH_100_MB: &'static str = "./100MB.bin";
 const FILE_PATH_1_GB: &'static str = "./1GB.bin";
 
+const BDP_KEY: &'static [u8] = b"test bdp key";
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -41,7 +43,7 @@ async fn main() {
             .await
             .unwrap();
 
-    while let Some(connection) = connections.next().await {
+    while let Some(mut connection) = connections.next().await {
         tokio::task::spawn(async move {
             info!("New connection");
 
@@ -56,6 +58,29 @@ async fn main() {
             connection.set_qlog(qlog_conf).await.unwrap();
 
             connection.established().await.unwrap();
+
+            let peer_token_bytes = connection.peer_token().await;
+            if let Some(peer_token_bytes) = peer_token_bytes {
+                info!("Received token from peer: {:02x?}", peer_token_bytes);
+                let mut peer_token_buf = std::io::Cursor::new(peer_token_bytes);
+                if let Ok(peer_token) = quiver_bdp_tokens::BDPToken::decode(&mut peer_token_buf) {
+                    debug!("Decoded token from peer: {:02x?}", peer_token);
+                    if let Ok(peer_bdp_token) = quiver_bdp_tokens::CRBDPData::from_bytes(&peer_token.bdp_data) {
+                        info!("Decoded BDP token from peer: {:?}", peer_bdp_token);
+                        if peer_bdp_token.expired() {
+                            warn!("Peer BDP token expired");
+                        } else if !peer_bdp_token.verify_signature(BDP_KEY) {
+                            warn!("Failed to verify signature over BDP token");
+                        } else {
+                            info!("BDP token verified, using for careful resume");
+                            connection.setup_careful_resume(
+                                peer_bdp_token.saved_rtt(), peer_bdp_token.saved_capacity() as usize
+                            ).await.unwrap()
+                        }
+                    }
+                }
+            }
+
             let alpn = connection.application_protocol().await;
             info!("New connection established, alpn={}", String::from_utf8_lossy(&alpn));
 
@@ -64,17 +89,31 @@ async fn main() {
                 return;
             }
 
+            let mut cr_event_recv = connection.cr_events();
+            let cr_event_connection = connection.send_half();
+            tokio::task::spawn(async move {
+                while let Some(cr_event) = cr_event_recv.next().await {
+                    info!("New CR event: {:?}", cr_event);
+
+                    let bdp_data = quiver_bdp_tokens::CRBDPData::from_quiche_cr_event(
+                        &cr_event, chrono::Duration::minutes(5), BDP_KEY
+                    );
+
+                    let mut bdp_token = quiver_bdp_tokens::BDPToken::default();
+                    bdp_token.saved_capacity = cr_event.cwnd as u64;
+                    bdp_token.saved_rtt = cr_event.min_rtt.as_micros();
+                    bdp_token.bdp_data = bdp_data.to_bytes();
+
+                    let mut bdp_token_buf = std::io::Cursor::new(vec![]);
+                    bdp_token.encode(&mut bdp_token_buf).unwrap();
+
+                    cr_event_connection.send_new_token(bdp_token_buf.into_inner()).await.unwrap();
+                }
+            });
+
             let mut h3_connection = quiver_h3::Connection::new(connection, true);
             h3_connection.setup().await.unwrap();
             info!("HTTP/3 connection open");
-
-            let mut test_bdp_token = quiver_bdp_tokens::BDPToken::default();
-            test_bdp_token.saved_capacity = 1320;
-            test_bdp_token.saved_rtt = 12500;
-            let mut test_bdp_token_buf = std::io::Cursor::new(vec![]);
-            test_bdp_token.encode(&mut test_bdp_token_buf).await.unwrap();
-
-            h3_connection.inner_connection().send_new_token(test_bdp_token_buf.into_inner()).await.unwrap();
 
             while let Some(mut request) = h3_connection.next_request().await.unwrap() {
                 tokio::task::spawn(async move {

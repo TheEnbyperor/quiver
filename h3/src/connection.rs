@@ -522,7 +522,7 @@ impl Connection {
                 return Err(error::Error::StreamCreation.into());
             }
         }
-        let stream_type = quiver_util::vli::read_int(&mut stream).await?;
+        let stream_type = quiver_util::vli::read_int_async(&mut stream).await?;
         match UniStreamType::from_type_id(stream_type) {
             UniStreamType::Control => {
                 if pending_peer_streams.control_stream.is_some() {
@@ -593,7 +593,7 @@ impl Connection {
             .connection
             .new_stream(self.next_uni_stream_id, false)
             .await?;
-        quiver_util::vli::write_int(&mut stream, stream_type.to_type_id()).await?;
+        quiver_util::vli::write_int_async(&mut stream, stream_type.to_type_id()).await?;
         self.next_uni_stream_id += 1;
         Ok(stream)
     }
