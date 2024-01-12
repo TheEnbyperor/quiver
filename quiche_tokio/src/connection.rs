@@ -59,7 +59,16 @@ impl From<quiche::ConnectionError> for ConnectionError {
 
 impl From<std::io::Error> for ConnectionError {
     fn from(value: std::io::Error) -> Self {
-        Self::Io(value.kind())
+        let is_quic_err = value.get_ref().and_then(|e| {
+            e.downcast_ref::<ConnectionError>()
+        }).is_some();
+        if is_quic_err {
+            let err = *value.into_inner().unwrap()
+                .downcast::<ConnectionError>().unwrap();
+            err
+        } else {
+            Self::Io(value.kind())
+        }
     }
 }
 
