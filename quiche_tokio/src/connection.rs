@@ -717,7 +717,7 @@ impl SharedConnectionState {
                                     Ok(s) => Ok(s),
                                     Err(quiche::Error::Done) => Ok(0),
                                     Err(e) => Err(e.into())
-                                }
+                                };
                                 let _ = resp.send(sent);
                                 inner.control_tx.send(Control::ShouldSend).await.unwrap();
                             }
