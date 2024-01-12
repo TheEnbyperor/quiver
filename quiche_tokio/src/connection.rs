@@ -757,7 +757,9 @@ impl SharedConnectionState {
                             }
                             Control::Close { app, err, reason } => {
                                 if let Err(e) = inner.conn.close(app, err, &reason) {
-                                    self.set_error(e.into()).await;
+                                    if e != quiche::Error::Done {
+                                        self.set_error(e.into()).await;
+                                    }
                                     break;
                                 }
                                 inner.control_tx.send(Control::ShouldSend).await.unwrap();
