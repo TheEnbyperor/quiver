@@ -53,7 +53,7 @@ pub struct Stream {
     is_server: bool,
     stream_id: StreamID,
     shared_state: std::sync::Arc<connection::SharedConnectionState>,
-    control_tx: tokio::sync::mpsc::Sender<connection::Control>,
+    control_tx: tokio::sync::mpsc::UnboundedSender<connection::Control>,
     async_read: StreamFut<ReadOutput>,
     async_write: StreamFut<WriteOutput>,
     async_shutdown: StreamFut<WriteOutput>,
@@ -65,7 +65,7 @@ impl Stream {
         is_server: bool,
         stream_id: StreamID,
         shared_state: std::sync::Arc<connection::SharedConnectionState>,
-        control_tx: tokio::sync::mpsc::Sender<connection::Control>,
+        control_tx: tokio::sync::mpsc::UnboundedSender<connection::Control>,
     ) -> Self {
         Self {
             is_server,
@@ -125,7 +125,7 @@ impl Stream {
     async fn _read(
         stream_id: StreamID,
         shared_state: std::sync::Arc<connection::SharedConnectionState>,
-        control_tx: tokio::sync::mpsc::Sender<connection::Control>,
+        control_tx: tokio::sync::mpsc::UnboundedSender<connection::Control>,
         len: usize,
         read_fin: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> ReadOutput {
@@ -136,7 +136,6 @@ impl Stream {
                 len,
                 resp: tx,
             })
-            .await
             .is_err()
         {
             match shared_state.connection_error.read().await.clone() {
@@ -176,7 +175,7 @@ impl Stream {
     async fn _write(
         stream_id: StreamID,
         shared_state: std::sync::Arc<connection::SharedConnectionState>,
-        control_tx: tokio::sync::mpsc::Sender<connection::Control>,
+        control_tx: tokio::sync::mpsc::UnboundedSender<connection::Control>,
         data: Vec<u8>,
         fin: bool,
     ) -> WriteOutput {
@@ -188,7 +187,6 @@ impl Stream {
                 fin,
                 resp: tx,
             })
-            .await
             .is_err()
         {
             match shared_state.connection_error.read().await.clone() {

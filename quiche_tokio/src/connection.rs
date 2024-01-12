@@ -114,7 +114,7 @@ pub(super) enum Control {
 #[derive(Debug)]
 pub struct Connection {
     is_server: bool,
-    control_tx: tokio::sync::mpsc::Sender<Control>,
+    control_tx: tokio::sync::mpsc::UnboundedSender<Control>,
     shared_state: std::sync::Arc<SharedConnectionState>,
     new_stream_rx: Option<tokio::sync::mpsc::Receiver<stream::Stream>>,
     new_token_rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>,
@@ -144,8 +144,8 @@ struct InnerConnectionState {
     socket: std::sync::Arc<tokio::net::UdpSocket>,
     packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
     max_datagram_size: usize,
-    control_rx: tokio::sync::mpsc::Receiver<Control>,
-    control_tx: tokio::sync::mpsc::Sender<Control>,
+    control_rx: tokio::sync::mpsc::UnboundedReceiver<Control>,
+    control_tx: tokio::sync::mpsc::UnboundedSender<Control>,
     new_stream_tx: tokio::sync::mpsc::Sender<stream::Stream>,
     new_token_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
 }
@@ -332,7 +332,7 @@ impl Connection {
         }
         let max_datagram_size = conn.max_send_udp_payload_size();
 
-        let (control_tx, control_rx) = tokio::sync::mpsc::channel(25);
+        let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
         let (new_stream_tx, new_stream_rx) = tokio::sync::mpsc::channel(25);
         let (new_token_tx, new_token_rx) = tokio::sync::mpsc::channel(25);
 
@@ -382,10 +382,9 @@ impl Connection {
         {
             return Err(err);
         }
-        match self.control_tx.try_send(control) {
+        match self.control_tx.send(control) {
             Ok(_) => {}
-            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {}
-            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+            Err(_) => {
                 if let Some(err) = self
                     .shared_state
                     .connection_error
@@ -585,11 +584,17 @@ impl NewConnections {
     }
 }
 
-
 struct PendingReceive {
     stream_id: u64,
     read_len: usize,
     resp: tokio::sync::oneshot::Sender<ConnectionResult<(Vec<u8>, bool)>>,
+}
+
+struct PendingSend {
+    stream_id: u64,
+    data: Vec<u8>,
+    fin: bool,
+    resp: tokio::sync::oneshot::Sender<ConnectionResult<usize>>,
 }
 
 impl SharedConnectionState {
@@ -597,6 +602,7 @@ impl SharedConnectionState {
         tokio::task::spawn(async move {
             let mut out = vec![0; inner.max_datagram_size];
             let mut pending_recv: Vec<PendingReceive> = vec![];
+            let mut pending_send: Vec<PendingSend> = vec![];
             let mut known_stream_ids = std::collections::HashSet::new();
 
             'outer: loop {
@@ -628,7 +634,7 @@ impl SharedConnectionState {
                         if inner.conn.is_established() {
                             self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                         }
-                        inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                        inner.control_tx.send(Control::ShouldSend).unwrap();
 
                         let readable = pending_recv
                             .extract_if(|s| inner.conn.stream_readable(s.stream_id))
@@ -644,6 +650,20 @@ impl SharedConnectionState {
                                     let _ = s.resp.send(Err(e.into()));
                                 }
                             }
+                        }
+
+                        let writable = pending_send
+                            .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
+                                .map(|c| c > 0).unwrap_or_default()
+                            )
+                            .collect::<Vec<_>>();
+                        for s in writable {
+                            inner.control_tx.send(Control::StreamSend {
+                                stream_id: s.stream_id,
+                                data: s.data,
+                                fin: s.fin,
+                                resp: s.resp
+                            }).unwrap();
                         }
 
                         let new_stream_ids = inner.conn.readable().filter(|stream_id| {
@@ -696,6 +716,20 @@ impl SharedConnectionState {
                                     if inner.conn.is_established() {
                                         self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                                     }
+                                    
+                                    let writable = pending_send
+                                        .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
+                                            .map(|c| c > 0).unwrap_or_default()
+                                        )
+                                        .collect::<Vec<_>>();
+                                    for s in writable {
+                                        inner.control_tx.send(Control::StreamSend {
+                                            stream_id: s.stream_id,
+                                            data: s.data,
+                                            fin: s.fin,
+                                            resp: s.resp
+                                        }).unwrap();
+                                    }
                                 }
                                 for (send_info, packet) in &packets {
                                     if let Err(e) = inner.socket.send_to(packet, &send_info.to).await {
@@ -710,16 +744,26 @@ impl SharedConnectionState {
                                     self.set_error(e.into()).await;
                                     break;
                                 }
-                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                             Control::StreamSend { stream_id, data, fin, resp} => {
-                                let sent = match inner.conn.stream_send(stream_id, &data, fin) {
-                                    Ok(s) => Ok(s),
-                                    Err(quiche::Error::Done) => Ok(0),
-                                    Err(e) => Err(e.into())
-                                };
-                                let _ = resp.send(sent);
-                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                                match inner.conn.stream_send(stream_id, &data, fin) {
+                                    Ok(s) => {
+                                        let _ = resp.send(Ok(s));
+                                    },
+                                    Err(quiche::Error::Done) => {
+                                        pending_send.push(PendingSend {
+                                            stream_id,
+                                            data,
+                                            fin,
+                                            resp
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let _ = resp.send(Err(e.into()));
+                                    }
+                                }
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                             Control::StreamRecv { stream_id, len, resp } => {
                                 let mut buf = vec![0u8; len];
@@ -739,7 +783,7 @@ impl SharedConnectionState {
                                         let _ = resp.send(Err(e.into()));
                                     }
                                 }
-                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                             Control::SetQLog(qlog) => {
                                 inner.conn.set_qlog_with_level(
@@ -753,7 +797,7 @@ impl SharedConnectionState {
                                 token
                             } => {
                                 inner.conn.send_new_token(&token);
-                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                             Control::Close { app, err, reason } => {
                                 if let Err(e) = inner.conn.close(app, err, &reason) {
@@ -762,14 +806,14 @@ impl SharedConnectionState {
                                     }
                                     break;
                                 }
-                                inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                         }
                     }
                     _ = timeout => {
                         trace!("{:?} On timeout", inner.scid);
                         inner.conn.on_timeout();
-                        inner.control_tx.send(Control::ShouldSend).await.unwrap();
+                        inner.control_tx.send(Control::ShouldSend).unwrap();
                     }
                 }
 
