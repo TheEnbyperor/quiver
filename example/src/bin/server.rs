@@ -44,6 +44,17 @@ async fn main() {
     while let Some(connection) = connections.next().await {
         tokio::task::spawn(async move {
             info!("New connection");
+
+            let scid = connection.scid();
+            let qlog = quiche_tokio::QLog::new(format!("./connection-{:?}.qlog", scid)).await.unwrap();
+            let qlog_conf = quiche_tokio::QLogConfig {
+                qlog,
+                title: format!("{:?}", scid),
+                description: String::new(),
+                level: quiche::QlogLevel::Extra,
+            };
+            connection.set_qlog(qlog_conf);
+
             connection.established().await.unwrap();
             let alpn = connection.application_protocol().await;
             info!("New connection established, alpn={}", String::from_utf8_lossy(&alpn));

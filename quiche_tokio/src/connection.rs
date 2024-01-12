@@ -114,6 +114,7 @@ pub(super) enum Control {
 #[derive(Debug)]
 pub struct Connection {
     is_server: bool,
+    scid: quiche::ConnectionId<'static>,
     control_tx: tokio::sync::mpsc::UnboundedSender<Control>,
     shared_state: std::sync::Arc<SharedConnectionState>,
     new_stream_rx: Option<tokio::sync::mpsc::Receiver<stream::Stream>>,
@@ -500,6 +501,10 @@ impl Connection {
 
     pub fn is_server(&self) -> bool {
         self.is_server
+    }
+
+    pub fn scid<'a>(&'a self) -> &quiche::ConnectionId<'a> {
+        &self.scid
     }
 
     pub async fn new_stream(&self, stream_id: u64, bidi: bool) -> ConnectionResult<stream::Stream> {
