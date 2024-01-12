@@ -5,6 +5,8 @@ use tokio::io::AsyncReadExt;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
+const FILE_PATH_1_MB: &'static str = "./1MB.bin";
+const FILE_PATH_10_MB: &'static str = "./10MB.bin";
 const FILE_PATH_100_MB: &'static str = "./100MB.bin";
 const FILE_PATH_1_GB: &'static str = "./1GB.bin";
 
@@ -114,6 +116,12 @@ async fn main() {
                             request.send_headers(&headers).await.unwrap();
                             request.send_data(b"hello world").await.unwrap();
                             request.done().await.unwrap();
+                        }
+                        b"/1MB.bin" => {
+                            send_file(&mut request, FILE_PATH_1_MB).await;
+                        }
+                        b"/10MB.bin" => {
+                            send_file(&mut request, FILE_PATH_10_MB).await;
                         }
                         b"/100MB.bin" => {
                             send_file(&mut request, FILE_PATH_100_MB).await;

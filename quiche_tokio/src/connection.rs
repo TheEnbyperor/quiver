@@ -716,7 +716,7 @@ impl SharedConnectionState {
                                     if inner.conn.is_established() {
                                         self.set_established(inner.conn.application_proto(), inner.conn.peer_transport_params()).await;
                                     }
-                                    
+
                                     let writable = pending_send
                                         .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
                                             .map(|c| c > 0).unwrap_or_default()
