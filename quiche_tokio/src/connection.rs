@@ -82,7 +82,7 @@ impl From<ConnectionError> for std::io::Error {
     fn from(value: ConnectionError) -> Self {
         match value {
             ConnectionError::Io(k) => std::io::Error::new(k, ""),
-            o => std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", o)),
+            o => std::io::Error::new(std::io::ErrorKind::Other, o),
         }
     }
 }

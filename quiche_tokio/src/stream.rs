@@ -142,7 +142,7 @@ impl Stream {
             match shared_state.connection_error.read().await.clone() {
                 Some(err) => {
                     trace!("Connection error: {:?}", err);
-                    return Err(std::io::Error::other(err.clone()));
+                    return Err(std::io::Error::other(err));
                 }
                 None => {
                     read_fin.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -162,7 +162,7 @@ impl Stream {
                 match shared_state.connection_error.read().await.clone() {
                     Some(err) => {
                         trace!("Connection error: {:?}", err);
-                        return Err(std::io::Error::other(err.clone()));
+                        return Err(std::io::Error::other(err));
                     }
                     None => {
                         read_fin.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -194,7 +194,7 @@ impl Stream {
             match shared_state.connection_error.read().await.clone() {
                 Some(err) => {
                     trace!("Connection error: {:?}", err);
-                    return Err(std::io::Error::other(err.clone()));
+                    return Err(std::io::Error::other(err));
                 }
                 None => {
                     return Ok(0);
@@ -207,7 +207,7 @@ impl Stream {
                 match shared_state.connection_error.read().await.clone() {
                     Some(err) => {
                         trace!("Connection error: {:?}", err);
-                        return Err(std::io::Error::other(err.clone()));
+                        return Err(std::io::Error::other(err));
                     }
                     None => {
                         return Ok(0);
