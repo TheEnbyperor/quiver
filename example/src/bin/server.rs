@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use clap::Parser;
 use tokio::io::AsyncReadExt;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
@@ -12,9 +13,19 @@ const FILE_PATH_1_GB: &'static str = "./1GB.bin";
 
 const BDP_KEY: &'static [u8] = b"test bdp key";
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    bind_addr: std::net::SocketAddr,
+    #[arg(long, default_value = false)]
+    pacing: bool,
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+    let args = Args::parse();
 
     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
     config.load_cert_chain_from_pem_file("./cert.crt").unwrap();
@@ -31,14 +42,13 @@ async fn main() {
     config.set_initial_max_streams_bidi(100);
     config.set_initial_max_streams_uni(100);
     config.set_disable_active_migration(true);
-    config.enable_resume(false);
     config.set_bdp_tokens(true);
+    config.enable_pacing(args.pacing);
+    config.enable_resume(true);
 
-    let bind_addr = "[::]:4443".parse().unwrap();
-
-    info!("Accepting QUIC connections on {}", bind_addr);
+    info!("Accepting QUIC connections on {}", args.bind_addr);
     let mut connections =
-        quiche_tokio::Connection::accept(bind_addr, config)
+        quiche_tokio::Connection::accept(args.bind_addr, config)
             .await
             .unwrap();
 

@@ -14,13 +14,15 @@ struct Args {
     peer_addr: std::net::SocketAddr,
     #[arg(short, long)]
     local_addr: Option<std::net::SocketAddr>,
+    #[arg(long, default_value = false)]
+    pacing: bool,
     #[arg(default_value = "/")]
     path: String,
 }
 
 async fn send_request(
     cid: &str, peer_addr: std::net::SocketAddr, local_addr: Option<std::net::SocketAddr>,
-    path: &str, bdp_token: Option<quiver_bdp_tokens::BDPToken>
+    path: &str, bdp_token: Option<quiver_bdp_tokens::BDPToken>, pacing: bool,
 ) -> Option<quiver_bdp_tokens::BDPToken> {
     let url = url::Url::parse("https://localhost/").unwrap();
     let url_host = url.host_str().unwrap();
@@ -48,7 +50,8 @@ async fn send_request(
     config.set_initial_max_streams_bidi(100);
     config.set_initial_max_streams_uni(100);
     config.set_disable_active_migration(true);
-    config.enable_resume(false);
+    config.enable_pacing(pacing);
+    config.enable_resume(true);
 
     let qlog = quiche_tokio::QLog::new(format!("./connection-{}.qlog", cid)).await.unwrap();
     let qlog_conf = quiche_tokio::QLogConfig {
@@ -141,17 +144,16 @@ async fn send_request(
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
-
     let args = Args::parse();
 
     let bdp_token = send_request(
-        "1", args.peer_addr, args.local_addr, &args.path, None
+        "1", args.peer_addr, args.local_addr, &args.path, None, args.pacing
     ).await;
 
     if let Some(bdp_token) = bdp_token {
         info!("Retrying connection with BDP token");
         send_request(
-            "2", args.peer_addr, args.local_addr, &args.path, Some(bdp_token)
+            "2", args.peer_addr, args.local_addr, &args.path, Some(bdp_token), args.pacing
         ).await;
     } else {
         warn!("Didn't receive a BDP token from the server");

@@ -57,7 +57,7 @@ impl UdpSocket {
                 std::mem::size_of::<libc::sock_txtime>() as libc::socklen_t
             )
         };
-        let has_pacing = res != -1;
+        let has_pacing = res >= 0;
 
         // let segment_size_i32 = segment_size as i32;
         // let res = unsafe {
