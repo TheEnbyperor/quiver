@@ -73,7 +73,7 @@ impl UdpSocket {
         if unsafe {
             libc::bind(
                 fd.as_raw_fd(), std::mem::transmute(&sock_addr),
-                std::mem::size_of::<libc::sockaddr>() as libc::socklen_t
+                std::mem::size_of::<CSocketAddr>() as libc::socklen_t
             )
         } == -1 {
             return Err(std::io::Error::last_os_error());
@@ -87,7 +87,7 @@ impl UdpSocket {
 
     pub fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
         let mut local_address: std::mem::MaybeUninit<CSocketAddr> = std::mem::MaybeUninit::uninit();
-        let mut address_length: libc::socklen_t = std::mem::size_of::<libc::sockaddr>() as libc::socklen_t;
+        let mut address_length: libc::socklen_t = std::mem::size_of::<CSocketAddr>() as libc::socklen_t;
         if unsafe {
             libc::getsockname(
                 self.fd.as_raw_fd(), std::mem::transmute(&mut local_address), &mut address_length
@@ -228,7 +228,7 @@ fn socket_addr_to_c(addr: std::net::SocketAddr) -> CSocketAddr {
         }
         std::net::SocketAddr::V6(v6) => {
             CSocketAddr {
-                v6 :libc::sockaddr_in6 {
+                v6: libc::sockaddr_in6 {
                     sin6_family: libc::AF_INET6 as u16,
                     sin6_port: v6.port().to_be(),
                     sin6_addr: libc::in6_addr {
