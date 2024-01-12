@@ -50,6 +50,7 @@ async fn main() {
     config.set_initial_max_streams_bidi(100);
     config.set_initial_max_streams_uni(100);
     config.set_disable_active_migration(true);
+    config.enable_resume(false);
 
     let qlog = quiche_tokio::QLog::new("./connection.qlog").await.unwrap();
     let qlog_conf = quiche_tokio::QLogConfig {
