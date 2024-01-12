@@ -77,7 +77,16 @@ async fn main() {
         info!("Server using BDP tokens");
         let mut new_token_recv = connection.new_tokens();
         tokio::task::spawn(async move {
-            while let Some(token) = new_token_recv.next().await.unwrap() {
+            while let Some(token) = match new_token_recv.next().await {
+                Ok(r) => r,
+                Err(err) => {
+                    // H3_NO_ERROR
+                    if err.to_id() == 0x100 {
+                        return
+                    }
+                    panic!("Error receiving tokens: {:?}", err);
+                }
+            } {
                 trace!("New token received: {:02x?}", token);
                 let mut bdp_token_buf = std::io::Cursor::new(token);
                 let bdp_token = quiver_bdp_tokens::BDPToken::decode(&mut bdp_token_buf).await.unwrap();
