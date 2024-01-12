@@ -16,4 +16,6 @@ quiche = { path = "../../quiche/quiche", features = ["qlog", "boringssl-boring-c
 rand = "0.8.5"
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
 futures = "0.3.30"
+nix = { version = "0.27.1", features = ["socket"] }
+async-io = "2.2.2"
 

@@ -8,8 +8,15 @@ mod qlog;
 
 mod stream;
 
-#[cfg(linux)]
-mod socket;
+#[cfg(target_os = "linux")]
+mod socket_linux;
+#[cfg(not(target_os = "linux"))]
+mod socket_other;
+
+#[cfg(target_os = "linux")]
+use socket_linux as socket;
+#[cfg(not(target_os = "linux"))]
+use socket_other as socket;
 
 pub use connection::{Connection, NewConnections, ConnectionError, ConnectionRecv, QLogConfig};
 pub use qlog::QLog;

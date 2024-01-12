@@ -1,4 +1,4 @@
-use super::stream;
+use super::{stream, socket};
 use rand::prelude::*;
 use futures::FutureExt;
 use std::ops::Deref;
@@ -155,7 +155,7 @@ pub(super) struct SharedConnectionState {
 struct InnerConnectionState {
     scid: quiche::ConnectionId<'static>,
     conn: quiche::Connection,
-    socket: std::sync::Arc<tokio::net::UdpSocket>,
+    socket: std::sync::Arc<socket::UdpSocket>,
     packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
     max_datagram_size: usize,
     control_rx: tokio::sync::mpsc::UnboundedReceiver<Control>,
@@ -171,8 +171,13 @@ impl Connection {
         mut config: quiche::Config,
     ) -> ConnectionResult<NewConnections> {
         let socket = std::sync::Arc::new(
-            tokio::net::UdpSocket::bind(bind_addr).await?
+            socket::UdpSocket::new(bind_addr).await?
         );
+
+        if !socket.has_pacing() {
+            config.enable_pacing(false);
+        }
+
         let local_addr = socket.local_addr()?;
         debug!("Listening on {}", local_addr);
 
@@ -186,7 +191,7 @@ impl Connection {
             > = std::collections::HashMap::new();
 
             loop {
-                let (len, from) = match socket.recv_from(&mut buf).await {
+                let (len, recv_info) = match socket.recv_dgram(&mut buf).await {
                     Ok(d) => d,
                     Err(e) => {
                         error!("Failed to received UDP packet: {}", e);
@@ -218,10 +223,14 @@ impl Connection {
                         tokio::task::spawn(async move {
                             let mut buf = [0; 65535];
                             let len = quiche::negotiate_version(&hdr.scid, &hdr.dcid, &mut buf)
-                                    .unwrap();
+                                .unwrap();
                             let out = &buf[..len];
 
-                            if let Err(e) = vneg_socket.send_to(out, from).await {
+                            if let Err(e) = vneg_socket.send_dgram(out, &quiche::SendInfo {
+                                from: local_addr,
+                                to: recv_info.from,
+                                at: std::time::Instant::now()
+                            }).await {
                                 error!("Failed to send packet: {}", e)
                             }
                         });
@@ -238,7 +247,7 @@ impl Connection {
                         &cid,
                         None,
                         local_addr,
-                        from,
+                        recv_info.from,
                         &mut config,
                     ).unwrap();
                     let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
@@ -253,11 +262,6 @@ impl Connection {
                     packet_tx
                 } else {
                     clients.get(&hdr.dcid).unwrap().to_owned()
-                };
-
-                let recv_info = quiche::RecvInfo {
-                    to: local_addr,
-                    from,
                 };
 
                 if let Err(_) = tx.send((pkt_buf.to_vec(), recv_info)).await {
@@ -295,7 +299,12 @@ impl Connection {
         thread_rng().fill(&mut cid[..]);
         let cid = quiche::ConnectionId::from_ref(&cid);
 
-        let socket = tokio::net::UdpSocket::bind(bind_addr).await?;
+        let socket = socket::UdpSocket::new(bind_addr).await?;
+
+        if !socket.has_pacing() {
+            config.enable_pacing(false);
+        }
+
         let local_addr = socket.local_addr()?;
         debug!("Connecting to {} from {}", peer_addr, local_addr);
 
@@ -308,16 +317,12 @@ impl Connection {
         tokio::task::spawn(async move {
             let mut buf = [0; 65535];
             loop {
-                let (len, addr) = match recv_socket.recv_from(&mut buf).await {
+                let (len, recv_info) = match recv_socket.recv_dgram(&mut buf).await {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Failed to read UDP packet: {}", e);
                         break;
                     }
-                };
-                let recv_info = quiche::RecvInfo {
-                    from: addr,
-                    to: local_addr
                 };
 
                 if let Err(_) = packet_tx.send((buf[..len].to_vec(), recv_info)).await {
@@ -334,7 +339,7 @@ impl Connection {
     async fn setup_connection<'a>(
         mut conn: quiche::Connection,
         scid: quiche::ConnectionId<'a>,
-        socket: std::sync::Arc<tokio::net::UdpSocket>,
+        socket: std::sync::Arc<socket::UdpSocket>,
         packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
         token: Option<&[u8]>,
         qlog: Option<QLogConfig>,
@@ -877,7 +882,7 @@ impl SharedConnectionState {
                                     }
                                 }
                                 for (send_info, packet) in &packets {
-                                    if let Err(e) = inner.socket.send_to(packet, &send_info.to).await {
+                                    if let Err(e) = inner.socket.send_dgram(packet, send_info).await {
                                         self.set_error(e.into()).await;
                                         break;
                                     }

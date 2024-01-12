@@ -32,7 +32,6 @@ async fn main() {
     config.set_initial_max_streams_uni(100);
     config.set_disable_active_migration(true);
     config.enable_resume(false);
-
     config.set_bdp_tokens(true);
 
     let bind_addr = "[::]:4443".parse().unwrap();
