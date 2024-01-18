@@ -975,7 +975,7 @@ impl SharedConnectionState {
                     }
                 }
 
-                if let Some(cr_event) = inner.conn.cr_event_next() {
+                if let Some(cr_event) = inner.conn.cr_event() {
                     inner.new_cr_event_tx.send_replace(Some(cr_event));
                 }
 

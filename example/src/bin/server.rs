@@ -18,7 +18,7 @@ const BDP_KEY: &'static [u8] = b"test bdp key";
 struct Args {
     #[arg(short, long)]
     bind_addr: std::net::SocketAddr,
-    #[arg(long, default_value = false)]
+    #[arg(long, default_value_t = false)]
     pacing: bool,
 }
 

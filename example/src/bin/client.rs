@@ -14,7 +14,7 @@ struct Args {
     peer_addr: std::net::SocketAddr,
     #[arg(short, long)]
     local_addr: Option<std::net::SocketAddr>,
-    #[arg(long, default_value = false)]
+    #[arg(long, default_value_t = false)]
     pacing: bool,
     #[arg(default_value = "/")]
     path: String,
