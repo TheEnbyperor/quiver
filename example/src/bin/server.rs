@@ -22,6 +22,119 @@ struct Args {
     pacing: bool,
 }
 
+struct CRCache {
+    data: std::collections::HashMap<std::net::IpAddr, CRCacheEntry>
+}
+
+impl CRCache {
+    fn new() -> Self {
+        Self {
+            data: std::collections::HashMap::new()
+        }
+    }
+
+    fn add(&mut self, addr: std::net::IpAddr, rtt: std::time::Duration, capacity: u64) {
+        self.data.insert(addr, CRCacheEntry {
+            expiry: chrono::Utc::now() + chrono::Duration::minutes(5),
+            rtt,
+            capacity
+        });
+    }
+
+    fn get(&mut self, addr: std::net::IpAddr) -> Option<CRCacheEntry> {
+        let entry = self.data.remove(&addr)?;
+        if entry.expired() {
+            None
+        } else {
+            Some(entry)
+        }
+    }
+}
+
+struct CRCacheEntry {
+    expiry: chrono::DateTime<chrono::Utc>,
+    rtt: std::time::Duration,
+    capacity: u64
+}
+
+impl CRCacheEntry {
+    fn expired(&self) -> bool {
+        self.expiry < chrono::Utc::now()
+    }
+}
+
+enum CRState {
+    Error,
+    Disable,
+    ClientCached {
+        rtt: std::time::Duration,
+        capacity: u64
+    },
+    ServerCached
+}
+
+async fn get_cr_state(connection: &quiche_tokio::Connection) -> CRState {
+    let peer_token_bytes = connection.peer_token().await;
+    if let Some(peer_token_bytes) = peer_token_bytes {
+        info!("Received token from peer: {:02x?}", peer_token_bytes);
+        let mut peer_token_buf = std::io::Cursor::new(peer_token_bytes);
+        if let Ok(peer_token) = quiver_bdp_tokens::BDPToken::decode(&mut peer_token_buf) {
+            info!("Decoded BDP token from peer: {:02x?}", peer_token);
+            if peer_token.requested_capacity == 0 {
+                info!("Client has requested careful resume be disabled");
+                CRState::Disable
+            } else if peer_token.bdp_data.len() == 0 {
+                CRState::ServerCached
+            } else if let Ok(peer_bdp_token) = quiver_bdp_tokens::CRBDPData::from_bytes(&peer_token.bdp_data) {
+                info!("Decoded inner BDP token from peer: {:?}", peer_bdp_token);
+                if peer_bdp_token.expired() {
+                    warn!("Peer BDP token expired");
+                    CRState::ServerCached
+                } else if !peer_bdp_token.verify_signature(BDP_KEY) {
+                    warn!("Failed to verify signature over BDP token");
+                    CRState::ServerCached
+                } else {
+                    info!("BDP token verified, using for careful resume");
+                    let capacity = std::cmp::min(
+                        peer_bdp_token.saved_capacity(), peer_token.requested_capacity
+                    );
+                    CRState::ClientCached {
+                        rtt: peer_bdp_token.saved_rtt(),
+                        capacity
+                    }
+                }
+            } else {
+                CRState::Error
+            }
+        } else {
+            CRState::Error
+        }
+    } else {
+        CRState::ServerCached
+    }
+}
+
+async fn setup_cr(connection: &quiche_tokio::Connection, cr_cache: &mut CRCache) -> Result<(), quiche_tokio::ConnectionError> {
+    let cr_state = get_cr_state(connection).await;
+    match cr_state {
+        CRState::Disable => Ok(()),
+        CRState::Error => {
+            connection.close(false, 0x1312, vec![]).await?;
+            Ok(())
+        }
+        CRState::ClientCached { rtt, capacity } => {
+            connection.setup_careful_resume(rtt, capacity as usize).await?;
+            Ok(())
+        }
+        CRState::ServerCached => {
+            if let Some(cr_entry) = cr_cache.get(connection.peer_addr().ip()) {
+                connection.setup_careful_resume(cr_entry.rtt, cr_entry.capacity as usize)?;
+            }
+            Ok(())
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -52,6 +165,8 @@ async fn main() {
             .await
             .unwrap();
 
+    let cr_cache = std::sync::Arc::new(tokio::sync::Mutex::new(CRCache::new()));
+
     while let Some(mut connection) = connections.next().await {
         tokio::task::spawn(async move {
             info!("New connection");
@@ -67,28 +182,7 @@ async fn main() {
             connection.set_qlog(qlog_conf).await.unwrap();
 
             connection.established().await.unwrap();
-
-            let peer_token_bytes = connection.peer_token().await;
-            if let Some(peer_token_bytes) = peer_token_bytes {
-                info!("Received token from peer: {:02x?}", peer_token_bytes);
-                let mut peer_token_buf = std::io::Cursor::new(peer_token_bytes);
-                if let Ok(peer_token) = quiver_bdp_tokens::BDPToken::decode(&mut peer_token_buf) {
-                    debug!("Decoded token from peer: {:02x?}", peer_token);
-                    if let Ok(peer_bdp_token) = quiver_bdp_tokens::CRBDPData::from_bytes(&peer_token.bdp_data) {
-                        info!("Decoded BDP token from peer: {:?}", peer_bdp_token);
-                        if peer_bdp_token.expired() {
-                            warn!("Peer BDP token expired");
-                        } else if !peer_bdp_token.verify_signature(BDP_KEY) {
-                            warn!("Failed to verify signature over BDP token");
-                        } else {
-                            info!("BDP token verified, using for careful resume");
-                            connection.setup_careful_resume(
-                                peer_bdp_token.saved_rtt(), peer_bdp_token.saved_capacity() as usize
-                            ).await.unwrap()
-                        }
-                    }
-                }
-            }
+            setup_cr(&connection, &mut cr_cache.lock().await).await.unwrap();
 
             let alpn = connection.application_protocol().await;
             info!("New connection established, alpn={}", String::from_utf8_lossy(&alpn));
