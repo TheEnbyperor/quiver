@@ -11,6 +11,7 @@ const MICROS_PER_SEC: u128 = 1_000_000;
 pub struct BDPToken {
     pub saved_capacity: u64,
     pub saved_rtt: u128,
+    pub requested_capacity: u64,
     pub address_validation_data: Vec<u8>,
     pub bdp_data: Vec<u8>
 }
@@ -20,6 +21,7 @@ impl Default for BDPToken {
         Self {
             saved_capacity: 0,
             saved_rtt: 0,
+            requested_capacity: 0,
             address_validation_data: Vec::new(),
             bdp_data: Vec::new()
         }
@@ -36,26 +38,29 @@ impl BDPToken {
 
         quiver_util::vli::write_int(buf, self.saved_capacity)?;
         quiver_util::vli::write_int(buf, self.saved_rtt)?;
+        quiver_util::vli::write_int(buf, self.requested_capacity)?;
         Ok(())
     }
 
     pub fn decode<R: std::io::Read + Unpin>(buf: &mut R) -> std::io::Result<Self> {
         let address_validation_data_len: usize = quiver_util::vli::read_int(buf)?;
-        let mut address_validation_data = vec![0u8; address_validation_data_len as usize];
+        let mut address_validation_data = vec![0u8; address_validation_data_len];
         buf.read_exact(&mut address_validation_data)?;
 
         let bdp_data_len: usize = quiver_util::vli::read_int(buf)?;
-        let mut bdp_data = vec![0u8; bdp_data_len as usize];
+        let mut bdp_data = vec![0u8; bdp_data_len];
         buf.read_exact(&mut bdp_data)?;
 
         let saved_capacity = quiver_util::vli::read_int(buf)?;
         let saved_rtt = quiver_util::vli::read_int(buf)?;
+        let requested_capacity = quiver_util::vli::read_int(buf)?;
 
         Ok(Self {
             address_validation_data,
             bdp_data,
             saved_capacity,
-            saved_rtt
+            saved_rtt,
+            requested_capacity,
         })
     }
 }
