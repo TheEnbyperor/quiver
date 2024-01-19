@@ -1,5 +1,6 @@
+use std::io::{Read, Write};
 use digest::generic_array;
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use hmac::digest::OutputSizeUser;
 
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
@@ -29,7 +30,7 @@ impl Default for BDPToken {
 }
 
 impl BDPToken {
-    pub fn encode<W: std::io::Write + Unpin>(&self, buf: &mut W) -> std::io::Result<()> {
+    pub fn encode<W: Write + Unpin>(&self, buf: &mut W) -> std::io::Result<()> {
         quiver_util::vli::write_int(buf, self.address_validation_data.len() as u64)?;
         buf.write_all(&self.address_validation_data)?;
 
@@ -69,6 +70,7 @@ impl BDPToken {
 pub struct CRBDPData {
     saved_capacity: u64,
     saved_rtt: std::time::Duration,
+    ip: std::net::IpAddr,
     expiry: chrono::DateTime<chrono::Utc>,
     signature: Vec<u8>
 }
@@ -82,6 +84,10 @@ impl CRBDPData {
         self.saved_rtt
     }
 
+    pub fn ip(&self) -> std::net::IpAddr {
+        self.ip
+    }
+
     pub fn expiry(&self) -> chrono::DateTime<chrono::Utc> {
         self.expiry
     }
@@ -90,13 +96,19 @@ impl CRBDPData {
         self.expiry < chrono::Utc::now()
     }
 
-    pub fn from_quiche_cr_event(event: &quiche::CREvent, lifetime: chrono::Duration, key: &[u8]) -> Self {
+    pub fn from_quiche_cr_event(
+        event: &quiche::CREvent,
+        ip: std::net::IpAddr,
+        lifetime: chrono::Duration,
+        key: &[u8]
+    ) -> Self {
         let now = chrono::Utc::now();
         let expiry = now + lifetime;
 
         let mut out = Self {
             saved_capacity: event.cwnd as u64,
             saved_rtt: event.min_rtt,
+            ip,
             expiry,
             signature: vec![],
         };
@@ -111,10 +123,24 @@ impl CRBDPData {
 
         let expiry_timestamp = self.expiry.timestamp();
 
-        std::io::Write::write_all(&mut out, &self.saved_capacity.to_be_bytes()).unwrap();
-        std::io::Write::write_all(&mut out, &self.saved_rtt.as_micros().to_be_bytes()).unwrap();
-        std::io::Write::write_all(&mut out, &expiry_timestamp.to_be_bytes()).unwrap();
-        std::io::Write::write_all(&mut out, &self.signature).unwrap();
+        out.write_all(&self.saved_capacity.to_be_bytes()).unwrap();
+        out.write_all(&self.saved_rtt.as_micros().to_be_bytes()).unwrap();
+
+        match self.ip {
+            std::net::IpAddr::V4(ip) => {
+                out.write_u8(0x04).unwrap();
+                // Only write the /24 subnet
+                out.write_all(&ip.octets()[..3]).unwrap();
+            }
+            std::net::IpAddr::V6(ip) => {
+                out.write_u8(0x06).unwrap();
+                // Only write the /48 subnet
+                out.write_all(&ip.octets()[..6]).unwrap();
+            }
+        }
+
+        out.write_all(&expiry_timestamp.to_be_bytes()).unwrap();
+        out.write_all(&self.signature).unwrap();
 
         out.into_inner()
     }
@@ -124,6 +150,22 @@ impl CRBDPData {
 
         let saved_capacity = ReadBytesExt::read_u64::<BigEndian>(&mut data)?;
         let saved_rtt = ReadBytesExt::read_u128::<BigEndian>(&mut data)?;
+
+        let ip_ver = data.read_u8()?;
+        let ip = match ip_ver {
+            0x04 => {
+                let mut subnet = [0u8; 4];
+                data.read_exact(&mut subnet[..3])?;
+                std::net::IpAddr::V4(std::net::Ipv4Addr::from(subnet))
+            }
+            0x06 => {
+                let mut subnet = [0u8; 16];
+                data.read_exact(&mut subnet[..6])?;
+                std::net::IpAddr::V6(std::net::Ipv6Addr::from(subnet))
+            }
+            _ => return Err(std::io::ErrorKind::InvalidData.into())
+        };
+
         let expiry_timestamp = ReadBytesExt::read_i64::<BigEndian>(&mut data)?;
 
         let mut signature = vec![0u8; HmacSha256::output_size()];
@@ -138,6 +180,7 @@ impl CRBDPData {
         Ok(Self {
             saved_capacity,
             saved_rtt,
+            ip,
             expiry,
             signature
         })

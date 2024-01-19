@@ -387,7 +387,7 @@ impl Connection {
             send_half: ConnectionSendHalf {
                 scid: scid.clone(),
                 is_server: conn.is_server(),
-                local_addr: socket.local_addr()?,
+                local_addr: socket.local_addr().unwrap(),
                 peer_addr,
                 control_tx: control_tx.clone(),
                 shared_state: shared_connection_state.clone(),

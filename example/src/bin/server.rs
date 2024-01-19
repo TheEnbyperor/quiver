@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use std::ops::DerefMut;
 use clap::Parser;
 use tokio::io::AsyncReadExt;
 
@@ -33,9 +34,9 @@ impl CRCache {
         }
     }
 
-    fn add(&mut self, addr: std::net::IpAddr, rtt: std::time::Duration, capacity: u64) {
+    fn add(&mut self, addr: std::net::IpAddr, lifetime: chrono::Duration, rtt: std::time::Duration, capacity: usize) {
         self.data.insert(addr, CRCacheEntry {
-            expiry: chrono::Utc::now() + chrono::Duration::minutes(5),
+            expiry: chrono::Utc::now() + lifetime,
             rtt,
             capacity
         });
@@ -54,7 +55,7 @@ impl CRCache {
 struct CRCacheEntry {
     expiry: chrono::DateTime<chrono::Utc>,
     rtt: std::time::Duration,
-    capacity: u64
+    capacity: usize
 }
 
 impl CRCacheEntry {
@@ -71,6 +72,18 @@ enum CRState {
         capacity: u64
     },
     ServerCached
+}
+
+fn common_subnet(lhs: std::net::IpAddr, rhs: std::net::IpAddr) -> bool {
+    match (lhs, rhs) {
+        (std::net::IpAddr::V4(lhs), std::net::IpAddr::V4(rhs)) => {
+            &lhs.octets()[..3] == &rhs.octets()[..3]
+        }
+        (std::net::IpAddr::V6(lhs), std::net::IpAddr::V6(rhs)) => {
+            &lhs.octets()[..6] == &rhs.octets()[..6]
+        }
+        _ => false
+    }
 }
 
 async fn get_cr_state(connection: &quiche_tokio::Connection) -> CRState {
@@ -93,6 +106,9 @@ async fn get_cr_state(connection: &quiche_tokio::Connection) -> CRState {
                 } else if !peer_bdp_token.verify_signature(BDP_KEY) {
                     warn!("Failed to verify signature over BDP token");
                     CRState::ServerCached
+                } else if !common_subnet(peer_bdp_token.ip(), connection.peer_addr().ip()) {
+                    info!("Client on a different subnet, not using careful resume");
+                    CRState::Disable
                 } else {
                     info!("BDP token verified, using for careful resume");
                     let capacity = std::cmp::min(
@@ -128,7 +144,7 @@ async fn setup_cr(connection: &quiche_tokio::Connection, cr_cache: &mut CRCache)
         }
         CRState::ServerCached => {
             if let Some(cr_entry) = cr_cache.get(connection.peer_addr().ip()) {
-                connection.setup_careful_resume(cr_entry.rtt, cr_entry.capacity as usize)?;
+                connection.setup_careful_resume(cr_entry.rtt, cr_entry.capacity).await?;
             }
             Ok(())
         }
@@ -168,6 +184,7 @@ async fn main() {
     let cr_cache = std::sync::Arc::new(tokio::sync::Mutex::new(CRCache::new()));
 
     while let Some(mut connection) = connections.next().await {
+        let cr_cache = cr_cache.clone();
         tokio::task::spawn(async move {
             info!("New connection");
 
@@ -182,7 +199,7 @@ async fn main() {
             connection.set_qlog(qlog_conf).await.unwrap();
 
             connection.established().await.unwrap();
-            setup_cr(&connection, &mut cr_cache.lock().await).await.unwrap();
+            setup_cr(&connection, cr_cache.lock().await.deref_mut()).await.unwrap();
 
             let alpn = connection.application_protocol().await;
             info!("New connection established, alpn={}", String::from_utf8_lossy(&alpn));
@@ -198,8 +215,12 @@ async fn main() {
                 while let Some(cr_event) = cr_event_recv.next().await {
                     info!("New CR event: {:?}", cr_event);
 
+                    let peer_ip = cr_event_connection.peer_addr().ip();
+                    cr_cache.lock().await.add(
+                        peer_ip, chrono::Duration::minutes(5), cr_event.min_rtt, cr_event.cwnd
+                    );
                     let bdp_data = quiver_bdp_tokens::CRBDPData::from_quiche_cr_event(
-                        &cr_event, chrono::Duration::minutes(5), BDP_KEY
+                        &cr_event, peer_ip, chrono::Duration::minutes(5), BDP_KEY
                     );
 
                     let mut bdp_token = quiver_bdp_tokens::BDPToken::default();
