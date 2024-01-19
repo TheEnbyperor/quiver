@@ -129,6 +129,8 @@ pub struct Connection {
 pub struct ConnectionSendHalf {
     is_server: bool,
     scid: quiche::ConnectionId<'static>,
+    local_addr: std::net::SocketAddr,
+    peer_addr: std::net::SocketAddr,
     control_tx: tokio::sync::mpsc::UnboundedSender<Control>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
@@ -252,7 +254,7 @@ impl Connection {
                     ).unwrap();
                     let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
                     let connection = Self::setup_connection(
-                        conn, cid.clone(), socket.clone(), packet_rx, None, None
+                        conn, cid.clone(), recv_info.from, socket.clone(), packet_rx, None, None
                     ).await;
 
                     if let Err(_) = new_cons_tx.send(connection).await {
@@ -332,13 +334,14 @@ impl Connection {
         });
 
         Ok(Self::setup_connection(
-            conn, cid, socket, packet_rx, token, qlog
+            conn, cid, peer_addr, socket, packet_rx, token, qlog
         ).await)
     }
 
     async fn setup_connection<'a>(
         mut conn: quiche::Connection,
         scid: quiche::ConnectionId<'a>,
+        peer_addr: std::net::SocketAddr,
         socket: std::sync::Arc<socket::UdpSocket>,
         packet_rx: tokio::sync::mpsc::Receiver<(Vec<u8>, quiche::RecvInfo)>,
         token: Option<&[u8]>,
@@ -384,6 +387,8 @@ impl Connection {
             send_half: ConnectionSendHalf {
                 scid: scid.clone(),
                 is_server: conn.is_server(),
+                local_addr: socket.local_addr()?,
+                peer_addr,
                 control_tx: control_tx.clone(),
                 shared_state: shared_connection_state.clone(),
             }
@@ -502,6 +507,14 @@ impl Connection {
 
     pub fn scid<'a>(&'a self) -> &quiche::ConnectionId<'a> {
         self.send_half.scid()
+    }
+
+    pub fn local_addr(&self) -> std::net::SocketAddr {
+        self.send_half.local_addr()
+    }
+
+    pub fn peer_addr(&self) -> std::net::SocketAddr {
+        self.send_half.peer_addr()
     }
 
     pub async fn new_stream(&self, stream_id: u64, bidi: bool) -> ConnectionResult<stream::Stream> {
@@ -655,6 +668,14 @@ impl ConnectionSendHalf {
 
     pub fn scid<'a>(&'a self) -> &quiche::ConnectionId<'a> {
         &self.scid
+    }
+
+    pub fn local_addr(&self) -> std::net::SocketAddr {
+        self.local_addr
+    }
+
+    pub fn peer_addr(&self) -> std::net::SocketAddr {
+        self.peer_addr
     }
 
     pub async fn new_stream(&self, stream_id: u64, bidi: bool) -> ConnectionResult<stream::Stream> {
