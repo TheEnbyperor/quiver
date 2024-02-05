@@ -149,6 +149,7 @@ pub(super) struct SharedConnectionState {
     connection_closed: std::sync::atomic::AtomicBool,
     connection_closed_notify: tokio::sync::Mutex<Vec<std::sync::Arc<tokio::sync::Notify>>>,
     application_protocol: tokio::sync::RwLock<Vec<u8>>,
+    dcid: tokio::sync::RwLock<Option<quiche::ConnectionId<'static>>>,
     peer_token: tokio::sync::RwLock<Option<Vec<u8>>>,
     transport_parameters: tokio::sync::RwLock<Option<quiche::TransportParams>>,
     pub(super) connection_error: tokio::sync::RwLock<Option<ConnectionError>>,
@@ -299,7 +300,7 @@ impl Connection {
 
         let mut cid = [0; quiche::MAX_CONN_ID_LEN];
         thread_rng().fill(&mut cid[..]);
-        let cid = quiche::ConnectionId::from_ref(&cid);
+        let scid = quiche::ConnectionId::from_ref(&cid);
 
         let socket = socket::UdpSocket::new(bind_addr).await?;
 
@@ -310,7 +311,7 @@ impl Connection {
         let local_addr = socket.local_addr()?;
         debug!("Connecting to {} from {}", peer_addr, local_addr);
 
-        let conn = quiche::connect(server_name, &cid, local_addr, peer_addr, &mut config)?;
+        let conn = quiche::connect(server_name, &scid, local_addr, peer_addr, &mut config)?;
 
         let socket = std::sync::Arc::new(socket);
         let (packet_tx, packet_rx) = tokio::sync::mpsc::channel(100);
@@ -334,7 +335,7 @@ impl Connection {
         });
 
         Ok(Self::setup_connection(
-            conn, cid, peer_addr, socket, packet_rx, token, qlog
+            conn, scid, peer_addr, socket, packet_rx, token, qlog
         ).await)
     }
 
@@ -374,6 +375,7 @@ impl Connection {
             connection_closed_notify: tokio::sync::Mutex::new(Vec::new()),
             connection_error: tokio::sync::RwLock::new(None),
             application_protocol: tokio::sync::RwLock::new(Vec::new()),
+            dcid: tokio::sync::RwLock::new(None),
             peer_token: tokio::sync::RwLock::new(None),
             transport_parameters: tokio::sync::RwLock::new(None),
         });
@@ -507,6 +509,10 @@ impl Connection {
 
     pub fn scid<'a>(&'a self) -> &quiche::ConnectionId<'a> {
         self.send_half.scid()
+    }
+
+    pub async fn dcid(&self) -> Option<quiche::ConnectionId<'static>> {
+        self.send_half.dcid().await
     }
 
     pub fn local_addr(&self) -> std::net::SocketAddr {
@@ -669,6 +675,9 @@ impl ConnectionSendHalf {
     pub fn scid<'a>(&'a self) -> &quiche::ConnectionId<'a> {
         &self.scid
     }
+    pub async fn dcid(&self) -> Option<quiche::ConnectionId<'static>> {
+        self.shared_state.dcid.read().await.clone()
+    }
 
     pub fn local_addr(&self) -> std::net::SocketAddr {
         self.local_addr
@@ -798,7 +807,8 @@ impl SharedConnectionState {
                             self.set_established(
                                 inner.conn.application_proto(),
                                 inner.conn.peer_transport_params(),
-                                inner.conn.peer_token()
+                                inner.conn.peer_token(),
+                                inner.conn.destination_id().into_owned()
                             ).await;
                         }
                         inner.control_tx.send(Control::ShouldSend).unwrap();
@@ -884,7 +894,8 @@ impl SharedConnectionState {
                                         self.set_established(
                                             inner.conn.application_proto(),
                                             inner.conn.peer_transport_params(),
-                                            inner.conn.peer_token()
+                                            inner.conn.peer_token(),
+                                            inner.conn.destination_id().into_owned()
                                         ).await;
                                     }
 
@@ -1049,12 +1060,14 @@ impl SharedConnectionState {
     }
 
     async fn set_established(
-        &self, alpn: &[u8], transport_params: Option<&quiche::TransportParams>, peer_token: Option<&[u8]>
+        &self, alpn: &[u8], transport_params: Option<&quiche::TransportParams>, peer_token: Option<&[u8]>,
+        dcid: quiche::ConnectionId<'static>
     ) {
         if !self.connection_established.load(std::sync::atomic::Ordering::Relaxed) {
             self.connection_established
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             *self.application_protocol.write().await = alpn.to_vec();
+            *self.dcid.write().await = Some(dcid);
             *self.peer_token.write().await = peer_token.map(|t| t.to_vec());
             *self.transport_parameters.write().await = transport_params.map(|p| p.to_owned());
             self.notify_connection_established().await;
