@@ -10,15 +10,10 @@ impl QLog {
         let (bytes_tx, mut bytes_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
         let h = tokio::task::spawn(async move {
-            loop {
-                match bytes_rx.recv().await {
-                    None => break,
-                    Some(b) => {
-                        if let Err(e) = file.write_all(&b).await {
-                            warn!("Error writing qlog: {}", e);
-                            break;
-                        }
-                    }
+            while let Some(b) = bytes_rx.recv().await {
+                if let Err(e) = file.write_all(&b).await {
+                    warn!("Error writing qlog: {}", e);
+                    break;
                 }
             }
         });
