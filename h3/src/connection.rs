@@ -353,7 +353,7 @@ impl Connection {
                             let request_state = requests_state.clone();
                             tokio::task::spawn(async move {
                                 let stream_id = stream.stream_id().full_stream_id();
-                                let mut stream = tokio::io::BufReader::new(stream);
+                                let mut stream = tokio::io::BufStream::new(stream);
 
                                 let request_headers = match Self::get_headers(&request_state, stream_id, &mut stream).await {
                                     Ok(h) => h,
@@ -450,7 +450,7 @@ impl Connection {
         header_frame.write(&mut stream).await?;
         stream.shutdown().await?;
 
-        let mut stream = tokio::io::BufReader::new(stream);
+        let mut stream = tokio::io::BufStream::new(stream);
         let response_headers =
             Self::get_headers(&self.shared_state, stream_id, &mut stream).await?;
         Self::output_qpack_deccoder_pending_commands(&self.shared_state).await?;
