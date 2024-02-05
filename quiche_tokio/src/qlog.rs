@@ -5,11 +5,11 @@ pub struct QLog {
 }
 
 impl QLog {
-    pub async fn new(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
+    pub async fn new(path: impl AsRef<std::path::Path>) -> std::io::Result<(Self, tokio::task::JoinHandle<()>)> {
         let mut file = tokio::fs::File::create(path).await?;
         let (bytes_tx, mut bytes_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-        tokio::task::spawn(async move {
+        let h = tokio::task::spawn(async move {
             loop {
                 match bytes_rx.recv().await {
                     None => break,
@@ -23,7 +23,7 @@ impl QLog {
             }
         });
 
-        Ok(QLog { bytes_tx })
+        Ok((QLog { bytes_tx }, h))
     }
 }
 
