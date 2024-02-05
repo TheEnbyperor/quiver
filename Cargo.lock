@@ -1020,7 +1020,7 @@ version = "0.2.0"
 [[package]]
 name = "octets"
 version = "0.2.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
+source = "git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b#79ad35f0404e73a57bec67ea952b22d758bfc08b"
 
 [[package]]
 name = "once_cell"
@@ -1150,7 +1150,7 @@ dependencies = [
 [[package]]
 name = "qlog"
 version = "0.11.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
+source = "git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b#79ad35f0404e73a57bec67ea952b22d758bfc08b"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1180,7 +1180,7 @@ dependencies = [
 [[package]]
 name = "quiche"
 version = "0.20.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
+source = "git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b#79ad35f0404e73a57bec67ea952b22d758bfc08b"
 dependencies = [
  "boring",
  "cmake",
@@ -1190,7 +1190,7 @@ dependencies = [
  "libc",
  "libm",
  "log",
- "octets 0.2.0 (git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b)",
+ "octets 0.2.0 (git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b)",
  "once_cell",
  "qlog",
  "ring",
@@ -1209,7 +1209,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b)",
  "rand",
  "tokio",
 ]
@@ -1222,7 +1222,7 @@ dependencies = [
  "chrono",
  "digest",
  "hmac",
- "quiche 0.20.0",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=79ad35f0404e73a57bec67ea952b22d758bfc08b)",
  "quiver-util",
  "sha2",
  "subtle",

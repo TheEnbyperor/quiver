@@ -6,7 +6,7 @@ pub struct QLog {
 
 impl QLog {
     pub async fn new(path: impl AsRef<std::path::Path>) -> std::io::Result<(Self, tokio::task::JoinHandle<()>)> {
-        let mut file = tokio::fs::File::create(path).await?;
+        let mut file = tokio::io::BufWriter::new(tokio::fs::File::create(path).await?);
         let (bytes_tx, mut bytes_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
         let h = tokio::task::spawn(async move {
