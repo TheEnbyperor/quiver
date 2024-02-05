@@ -1018,6 +1018,11 @@ name = "octets"
 version = "0.2.0"
 
 [[package]]
+name = "octets"
+version = "0.2.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
+
+[[package]]
 name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1145,6 +1150,7 @@ dependencies = [
 [[package]]
 name = "qlog"
 version = "0.11.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1157,6 +1163,25 @@ dependencies = [
 name = "quiche"
 version = "0.20.0"
 dependencies = [
+ "cmake",
+ "either",
+ "intrusive-collections",
+ "libc",
+ "libm",
+ "log",
+ "octets 0.2.0",
+ "once_cell",
+ "ring",
+ "slab",
+ "smallvec",
+ "winapi",
+]
+
+[[package]]
+name = "quiche"
+version = "0.20.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b#31328b9b2ed6f80e44162c01a45a2c9fc473c23b"
+dependencies = [
  "boring",
  "cmake",
  "either",
@@ -1165,7 +1190,7 @@ dependencies = [
  "libc",
  "libm",
  "log",
- "octets",
+ "octets 0.2.0 (git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b)",
  "once_cell",
  "qlog",
  "ring",
@@ -1184,7 +1209,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "quiche",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=31328b9b2ed6f80e44162c01a45a2c9fc473c23b)",
  "rand",
  "tokio",
 ]
@@ -1197,7 +1222,7 @@ dependencies = [
  "chrono",
  "digest",
  "hmac",
- "quiche",
+ "quiche 0.20.0",
  "quiver-util",
  "sha2",
  "subtle",
@@ -1213,7 +1238,7 @@ dependencies = [
  "indicatif",
  "log",
  "pretty_env_logger",
- "quiche",
+ "quiche 0.20.0",
  "quiche-tokio",
  "quiver-bdp-tokens",
  "quiver-h3",

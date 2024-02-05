@@ -811,7 +811,6 @@ impl SharedConnectionState {
                                 inner.conn.destination_id().into_owned()
                             ).await;
                         }
-                        inner.control_tx.send(Control::ShouldSend).unwrap();
 
                         let readable = pending_recv
                             .extract_if(|s| inner.conn.stream_readable(s.stream_id))
@@ -827,20 +826,6 @@ impl SharedConnectionState {
                                     let _ = s.resp.send(Err(e.into()));
                                 }
                             }
-                        }
-
-                        let writable = pending_send
-                            .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
-                                .map(|c| c > 0).unwrap_or_default()
-                            )
-                            .collect::<Vec<_>>();
-                        for s in writable {
-                            inner.control_tx.send(Control::StreamSend {
-                                stream_id: s.stream_id,
-                                data: s.data,
-                                fin: s.fin,
-                                resp: s.resp
-                            }).unwrap();
                         }
 
                         let new_stream_ids = inner.conn.readable().filter(|stream_id| {
@@ -868,6 +853,8 @@ impl SharedConnectionState {
                            let _ = inner.new_token_tx.try_send(token);
                         }
 
+                        inner.control_tx.send(Control::ShouldSend).unwrap();
+
                         trace!("{:?} Receive done", inner.scid);
                     }
                     c = inner.control_rx.recv() => {
@@ -890,28 +877,6 @@ impl SharedConnectionState {
                                         }
                                     };
                                     packets.push((send_info, (&out[..write]).to_vec()));
-                                    if inner.conn.is_established() {
-                                        self.set_established(
-                                            inner.conn.application_proto(),
-                                            inner.conn.peer_transport_params(),
-                                            inner.conn.peer_token(),
-                                            inner.conn.destination_id().into_owned()
-                                        ).await;
-                                    }
-
-                                    let writable = pending_send
-                                        .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
-                                            .map(|c| c > 0).unwrap_or_default()
-                                        )
-                                        .collect::<Vec<_>>();
-                                    for s in writable {
-                                        inner.control_tx.send(Control::StreamSend {
-                                            stream_id: s.stream_id,
-                                            data: s.data,
-                                            fin: s.fin,
-                                            resp: s.resp
-                                        }).unwrap();
-                                    }
                                 }
                                 for (send_info, packet) in &packets {
                                     if let Err(e) = inner.socket.send_dgram(packet, send_info).await {
@@ -919,6 +884,29 @@ impl SharedConnectionState {
                                         break;
                                     }
                                     trace!("{:?} Sent {} bytes", inner.scid, packet.len());
+                                }
+
+                                if inner.conn.is_established() {
+                                    self.set_established(
+                                        inner.conn.application_proto(),
+                                        inner.conn.peer_transport_params(),
+                                        inner.conn.peer_token(),
+                                        inner.conn.destination_id().into_owned()
+                                    ).await;
+                                }
+
+                                let writable = pending_send
+                                    .extract_if(|s| inner.conn.stream_capacity(s.stream_id)
+                                        .map(|c| c > 0).unwrap_or_default()
+                                    )
+                                    .collect::<Vec<_>>();
+                                for s in writable {
+                                    inner.control_tx.send(Control::StreamSend {
+                                        stream_id: s.stream_id,
+                                        data: s.data,
+                                        fin: s.fin,
+                                        resp: s.resp
+                                    }).unwrap();
                                 }
                             },
                             Control::SendAckEliciting => {

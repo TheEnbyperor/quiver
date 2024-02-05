@@ -702,7 +702,7 @@ impl Connection {
 pub struct Message {
     headers: qpack::Headers<'static>,
     trailers: Option<qpack::Headers<'static>>,
-    stream: tokio::io::BufReader<quiche_tokio::Stream>,
+    stream: tokio::io::BufStream<quiche_tokio::Stream>,
     shared_state: std::sync::Arc<SharedConnectionState>,
 }
 
@@ -816,7 +816,13 @@ impl Message {
         Ok(())
     }
 
+    pub async fn flush(&mut self) -> error::HttpResult<()> {
+        self.stream.flush().await?;
+        Ok(())
+    }
+
     pub async fn done(&mut self) -> error::HttpResult<()> {
+        self.stream.flush().await?;
         self.stream.shutdown().await?;
         Ok(())
     }
