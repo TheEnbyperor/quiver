@@ -791,20 +791,21 @@ impl SharedConnectionState {
                                 break;
                             }
                         };
-                        
-                        inner.control_tx.send(Control::ShouldSend).unwrap();
 
-                        let read = match inner.conn.recv(&mut pkt, recv_info) {
-                            Ok(v) => v,
-                            Err(quiche::Error::Done) => {
-                                continue;
+                        match inner.conn.recv(&mut pkt, recv_info) {
+                            Ok(v) => {
+                                trace!("{:?} Received {} bytes", inner.scid, v);
                             },
+                            Err(quiche::Error::Done) => { },
                             Err(e) => {
                                 self.set_error(e.into()).await;
                                 break;
                             },
                         };
-                        trace!("{:?} Received {} bytes", inner.scid, read);
+
+
+                        inner.control_tx.send(Control::ShouldSend).unwrap();
+
                         if inner.conn.is_established() {
                             self.set_established(
                                 inner.conn.application_proto(),
