@@ -803,7 +803,6 @@ impl SharedConnectionState {
                             },
                         };
 
-
                         inner.control_tx.send(Control::ShouldSend).unwrap();
 
                         if inner.conn.is_established() {
@@ -887,10 +886,6 @@ impl SharedConnectionState {
                                     trace!("{:?} Sent {} bytes", inner.scid, packet.len());
                                 }
 
-                                if !packets.is_empty() {
-                                    inner.control_tx.send(Control::ShouldSend).unwrap();
-                                }
-
                                 if inner.conn.is_established() {
                                     self.set_established(
                                         inner.conn.application_proto(),
@@ -912,6 +907,10 @@ impl SharedConnectionState {
                                         fin: s.fin,
                                         resp: s.resp
                                     }).unwrap();
+                                }
+
+                                if !packets.is_empty() {
+                                    inner.control_tx.send(Control::ShouldSend).unwrap();
                                 }
                             },
                             Control::SendAckEliciting => {
