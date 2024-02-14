@@ -791,6 +791,8 @@ impl SharedConnectionState {
                                 break;
                             }
                         };
+                        
+                        inner.control_tx.send(Control::ShouldSend).unwrap();
 
                         let read = match inner.conn.recv(&mut pkt, recv_info) {
                             Ok(v) => v,
@@ -853,8 +855,6 @@ impl SharedConnectionState {
                            let _ = inner.new_token_tx.try_send(token);
                         }
 
-                        inner.control_tx.send(Control::ShouldSend).unwrap();
-
                         trace!("{:?} Receive done", inner.scid);
                     }
                     c = inner.control_rx.recv() => {
@@ -884,6 +884,10 @@ impl SharedConnectionState {
                                         break;
                                     }
                                     trace!("{:?} Sent {} bytes", inner.scid, packet.len());
+                                }
+
+                                if !packets.is_empty() {
+                                    inner.control_tx.send(Control::ShouldSend).unwrap();
                                 }
 
                                 if inner.conn.is_established() {
