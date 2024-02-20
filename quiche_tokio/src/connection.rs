@@ -114,6 +114,9 @@ pub(super) enum Control {
         previous_rtt: Duration,
         previous_cwnd: usize,
         resp: tokio::sync::oneshot::Sender<ConnectionResult<()>>,
+    },
+    SetupDefaultStreamWindow {
+        window: u64,
     }
 }
 
@@ -530,6 +533,10 @@ impl Connection {
     pub async fn setup_careful_resume(&self, previous_rtt: Duration, previous_cwnd: usize) -> ConnectionResult<()> {
         self.send_half.setup_careful_resume(previous_rtt, previous_cwnd).await
     }
+
+    pub async fn setup_default_stream_window(&self, window: u64) -> ConnectionResult<()> {
+        self.send_half.setup_default_stream_window(window).await
+    }
 }
 
 impl ConnectionSendHalf {
@@ -707,6 +714,13 @@ impl ConnectionSendHalf {
             Ok(r) => r,
             Err(_) => Err(self.make_error().await)
         }
+    }
+
+    pub async fn setup_default_stream_window(&self, window: u64) -> ConnectionResult<()> {
+        self.send_control(Control::SetupDefaultStreamWindow {
+            window,
+        }).await?;
+        Ok(())
     }
 }
 
@@ -980,6 +994,11 @@ impl SharedConnectionState {
                                     inner.conn.setup_careful_resume(previous_rtt, previous_cwnd)
                                         .map_err(|e| e.into())
                                 );
+                            }
+                            Control::SetupDefaultStreamWindow {
+                                window
+                            } => {
+                                inner.conn.setup_default_stream_window(window);
                             }
                             Control::Close { app, err, reason } => {
                                 if let Err(e) = inner.conn.close(app, err, &reason) {
