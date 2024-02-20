@@ -1023,6 +1023,11 @@ name = "octets"
 version = "0.3.0"
 
 [[package]]
+name = "octets"
+version = "0.3.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+
+[[package]]
 name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1160,6 +1165,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "qlog"
+version = "0.12.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "smallvec",
+]
+
+[[package]]
 name = "quiche"
 version = "0.20.0"
 dependencies = [
@@ -1182,6 +1199,26 @@ name = "quiche"
 version = "0.20.0"
 source = "git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517#1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517"
 dependencies = [
+ "cmake",
+ "either",
+ "intrusive-collections",
+ "libc",
+ "libm",
+ "log",
+ "octets 0.2.0",
+ "once_cell",
+ "qlog 0.11.0",
+ "ring",
+ "slab",
+ "smallvec",
+ "winapi",
+]
+
+[[package]]
+name = "quiche"
+version = "0.20.0"
+source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+dependencies = [
  "boring",
  "cmake",
  "either",
@@ -1190,9 +1227,9 @@ dependencies = [
  "libc",
  "libm",
  "log",
- "octets 0.2.0",
+ "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
  "once_cell",
- "qlog",
+ "qlog 0.12.0",
  "ring",
  "slab",
  "smallvec",
@@ -1209,7 +1246,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
  "rand",
  "tokio",
 ]
