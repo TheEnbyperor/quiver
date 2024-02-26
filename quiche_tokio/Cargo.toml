@@ -11,7 +11,7 @@ repository = "https://github.com/TheEnbyperor/quiver"
 async-trait = "0.1.74"
 libc = "0.2.150"
 log = "0.4.20"
-quiche = { git = "https://github.com/theenbyperor/quiche", rev = "74b265180e04e9aa3d2213a3b07749e6d7596ed2", features = ["qlog", "boringssl-boring-crate"] }
+quiche = { git = "https://github.com/theenbyperor/quiche", rev = "bdd809fa53eb95586a23c5d31ca8824a69e3211c", features = ["qlog", "boringssl-boring-crate"] }
 #quiche = { path = "../../quiche/quiche", features = ["qlog", "boringssl-boring-crate"], version = "0.20"}
 rand = "0.8.5"
 tokio = { version = "1.33.0", features = ["net", "macros", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
