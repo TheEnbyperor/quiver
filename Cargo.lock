@@ -152,12 +152,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "base64"
-version = "0.21.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c79fed4cdb43e993fcdadc7e58a09fd0e3e649c4436fa11da71c9f1f3ee7feb9"
-
-[[package]]
 name = "bindgen"
 version = "0.68.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,7 +269,6 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
- "serde",
  "wasm-bindgen",
  "windows-targets 0.48.5",
 ]
@@ -432,16 +425,6 @@ dependencies = [
  "darling_core",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "deranged"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
-dependencies = [
- "powerfmt",
- "serde",
 ]
 
 [[package]]
@@ -709,12 +692,6 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "hashbrown"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "hashbrown"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
@@ -793,24 +770,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
-dependencies = [
- "autocfg",
- "hashbrown 0.12.3",
- "serde",
-]
-
-[[package]]
-name = "indexmap"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d530e1a18b1cb4c484e6e34556a0d948706958449fca0cab753d649f2bce3d1f"
 dependencies = [
  "equivalent",
- "hashbrown 0.14.3",
- "serde",
+ "hashbrown",
 ]
 
 [[package]]
@@ -1015,11 +980,6 @@ dependencies = [
 
 [[package]]
 name = "octets"
-version = "0.2.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517#1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517"
-
-[[package]]
-name = "octets"
 version = "0.3.0"
 
 [[package]]
@@ -1122,12 +1082,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7170ef9988bc169ba16dd36a7fa041e5c4cbeb6a35b76d4c03daded371eae7c0"
 
 [[package]]
-name = "powerfmt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1150,18 +1104,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95fc56cda0b5c3325f5fbbd7ff9fda9e02bb00bb3dac51252d2f1bfa1cb8cc8c"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "qlog"
-version = "0.11.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517#1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517"
-dependencies = [
- "serde",
- "serde_derive",
- "serde_json",
- "serde_with",
- "smallvec",
 ]
 
 [[package]]
@@ -1197,26 +1139,6 @@ dependencies = [
 [[package]]
 name = "quiche"
 version = "0.20.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517#1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517"
-dependencies = [
- "cmake",
- "either",
- "intrusive-collections",
- "libc",
- "libm",
- "log",
- "octets 0.2.0",
- "once_cell",
- "qlog 0.11.0",
- "ring",
- "slab",
- "smallvec",
- "winapi",
-]
-
-[[package]]
-name = "quiche"
-version = "0.20.0"
 source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
 dependencies = [
  "boring",
@@ -1229,7 +1151,7 @@ dependencies = [
  "log",
  "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
  "once_cell",
- "qlog 0.12.0",
+ "qlog",
  "ring",
  "slab",
  "smallvec",
@@ -1259,7 +1181,7 @@ dependencies = [
  "chrono",
  "digest",
  "hmac",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=1daf38aa4e522a02e0b5e97c0bc7ccbb98e4f517)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
  "quiver-util",
  "sha2",
  "subtle",
@@ -1450,7 +1372,7 @@ version = "1.0.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "176e46fa42316f18edd598015a5166857fc835ec732f5215eac6b7bdbf0a84f4"
 dependencies = [
- "indexmap 2.1.0",
+ "indexmap",
  "itoa",
  "ryu",
  "serde",
@@ -1462,15 +1384,8 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64cd236ccc1b7a29e7e2739f27c0b2dd199804abc4290e32f59f3b68d6405c23"
 dependencies = [
- "base64",
- "chrono",
- "hex",
- "indexmap 1.9.3",
- "indexmap 2.1.0",
  "serde",
- "serde_json",
  "serde_with_macros",
- "time",
 ]
 
 [[package]]
@@ -1572,35 +1487,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "time"
-version = "0.3.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f657ba42c3f86e7680e53c8cd3af8abbe56b5491790b46e22e19c0d57463583e"
-dependencies = [
- "deranged",
- "itoa",
- "powerfmt",
- "serde",
- "time-core",
- "time-macros",
-]
-
-[[package]]
-name = "time-core"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
-
-[[package]]
-name = "time-macros"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26197e33420244aeb70c3e8c78376ca46571bc4e701e4791c2cd9f57dcb3a43f"
-dependencies = [
- "time-core",
 ]
 
 [[package]]
