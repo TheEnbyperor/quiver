@@ -82,6 +82,43 @@ impl Stream {
     pub fn stream_id(&self) -> StreamID {
         self.stream_id
     }
+
+    pub async fn set_max_data(&self, max_data: u64) -> std::io::Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        if self.control_tx
+            .send(connection::Control::StreamSetMaxData {
+                stream_id: self.stream_id.0,
+                max_data,
+                resp: tx,
+            })
+            .is_err()
+        {
+            match self.shared_state.connection_error.read().await.clone() {
+                Some(err) => {
+                    trace!("Connection error: {:?}", err);
+                    return Err(std::io::Error::other(err));
+                }
+                None => {
+                    return Ok(());
+                }
+            }
+        }
+        match rx.await {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => Err(e.into()),
+            Err(_) => {
+                match self.shared_state.connection_error.read().await.clone() {
+                    Some(err) => {
+                        trace!("Connection error: {:?}", err);
+                        return Err(std::io::Error::other(err));
+                    }
+                    None => {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Clone for Stream {

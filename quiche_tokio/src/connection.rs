@@ -107,6 +107,11 @@ pub(super) enum Control {
         len: usize,
         resp: tokio::sync::oneshot::Sender<ConnectionResult<(Vec<u8>, bool)>>,
     },
+    StreamSetMaxData {
+        stream_id: u64,
+        max_data: u64,
+        resp: tokio::sync::oneshot::Sender<ConnectionResult<()>>,
+    },
     SendNewToken {
         token: Vec<u8>
     },
@@ -972,6 +977,14 @@ impl SharedConnectionState {
                                     }
                                 }
                                 inner.control_tx.send(Control::ShouldSend).unwrap();
+                            }
+                            Control::StreamSetMaxData {
+                                stream_id, max_data, resp
+                            } => {
+                                let _ = resp.send(
+                                    inner.conn.stream_max_data(stream_id, max_data)
+                                        .map_err(|e| e.into())
+                                );
                             }
                             Control::SetQLog(qlog) => {
                                 inner.conn.set_qlog_with_level(
