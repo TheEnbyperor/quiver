@@ -985,7 +985,7 @@ version = "0.3.0"
 [[package]]
 name = "octets"
 version = "0.3.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
 
 [[package]]
 name = "once_cell"
@@ -1109,7 +1109,7 @@ dependencies = [
 [[package]]
 name = "qlog"
 version = "0.12.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1139,7 +1139,7 @@ dependencies = [
 [[package]]
 name = "quiche"
 version = "0.20.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533#a5076d3a9fb53d94267a81b564a20569eb673533"
+source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
 dependencies = [
  "boring",
  "cmake",
@@ -1149,7 +1149,7 @@ dependencies = [
  "libc",
  "libm",
  "log",
- "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
+ "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
  "once_cell",
  "qlog",
  "ring",
@@ -1168,7 +1168,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
  "rand",
  "tokio",
 ]
@@ -1181,8 +1181,9 @@ dependencies = [
  "chrono",
  "digest",
  "hmac",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=a5076d3a9fb53d94267a81b564a20569eb673533)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
  "quiver-util",
+ "serde",
  "sha2",
  "subtle",
  "tokio",
@@ -1348,18 +1349,18 @@ checksum = "f98d2aa92eebf49b69786be48e4477826b256916e84a57ff2a4f21923b48eb4c"
 
 [[package]]
 name = "serde"
-version = "1.0.195"
+version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63261df402c67811e9ac6def069e4786148c4563f4b50fd4bf30aa370d626b02"
+checksum = "3fb1c873e1b9b056a4dc4c0c198b24c3ffa059243875552b2bd0933b1aee4ce2"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.195"
+version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46fe8f8603d81ba86327b23a2e9cdf49e1255fb94a4c5f297f6ee0547178ea2c"
+checksum = "7eb0b34b42edc17f6b7cac84a52a1c5f0e1bb2227e997ca9011ea3dd34e8610b"
 dependencies = [
  "proc-macro2",
  "quote",

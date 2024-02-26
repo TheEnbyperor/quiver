@@ -8,7 +8,7 @@ type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 const NANOS_PER_MICRO: u32 = 1_000;
 const MICROS_PER_SEC: u128 = 1_000_000;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BDPToken {
     pub saved_capacity: u64,
     pub saved_rtt: u128,

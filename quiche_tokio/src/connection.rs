@@ -808,7 +808,7 @@ impl SharedConnectionState {
 
                         match inner.conn.recv(&mut pkt, recv_info) {
                             Ok(v) => {
-                                trace!("{:?} Received {} bytes", inner.scid, v);
+                                trace!("{:?} received {} bytes", inner.scid, v);
                             },
                             Err(quiche::Error::Done) => { },
                             Err(e) => {
@@ -869,7 +869,7 @@ impl SharedConnectionState {
                            let _ = inner.new_token_tx.try_send(token);
                         }
 
-                        trace!("{:?} Receive done", inner.scid);
+                        trace!("{:?} receive done", inner.scid);
                     }
                     c = inner.control_rx.recv() => {
                         let c = match c {
@@ -897,7 +897,7 @@ impl SharedConnectionState {
                                         self.set_error(e.into()).await;
                                         break;
                                     }
-                                    trace!("{:?} Sent {} bytes", inner.scid, packet.len());
+                                    trace!("{:?} sent {} bytes", inner.scid, packet.len());
                                 }
 
                                 if inner.conn.is_established() {
@@ -1012,13 +1012,14 @@ impl SharedConnectionState {
                         }
                     }
                     _ = timeout => {
-                        trace!("{:?} On timeout", inner.scid);
+                        trace!("{:?} on timeout", inner.scid);
                         inner.conn.on_timeout();
                         inner.control_tx.send(Control::ShouldSend).unwrap();
                     }
                 }
 
                 if let Some(cr_event) = inner.conn.cr_event_next() {
+                    trace!("new careful resume event: {:?}", cr_event);
                     inner.new_cr_event_tx.send_replace(Some(cr_event));
                 }
 
@@ -1048,7 +1049,7 @@ impl SharedConnectionState {
                     break;
                 }
             }
-            trace!("{:?} Connection closed", inner.scid);
+            trace!("{:?} connection closed", inner.scid);
         });
     }
 

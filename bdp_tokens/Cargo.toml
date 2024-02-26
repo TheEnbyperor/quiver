@@ -16,3 +16,4 @@ quiche = { git = "https://github.com/theenbyperor/quiche", rev = "74b265180e04e9
 byteorder = "1.5.0"
 digest = "0.10.7"
 subtle = "2.5.0"
+serde = "1.0.197"
