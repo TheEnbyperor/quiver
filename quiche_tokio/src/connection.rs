@@ -985,6 +985,7 @@ impl SharedConnectionState {
                                     inner.conn.stream_max_data(stream_id, max_data)
                                         .map_err(|e| e.into())
                                 );
+                                inner.control_tx.send(Control::ShouldSend).unwrap();
                             }
                             Control::SetQLog(qlog) => {
                                 inner.conn.set_qlog_with_level(
