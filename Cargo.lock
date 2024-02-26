@@ -985,7 +985,7 @@ version = "0.3.0"
 [[package]]
 name = "octets"
 version = "0.3.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
+source = "git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c#bdd809fa53eb95586a23c5d31ca8824a69e3211c"
 
 [[package]]
 name = "once_cell"
@@ -1109,7 +1109,7 @@ dependencies = [
 [[package]]
 name = "qlog"
 version = "0.12.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
+source = "git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c#bdd809fa53eb95586a23c5d31ca8824a69e3211c"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1139,7 +1139,7 @@ dependencies = [
 [[package]]
 name = "quiche"
 version = "0.20.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2#74b265180e04e9aa3d2213a3b07749e6d7596ed2"
+source = "git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c#bdd809fa53eb95586a23c5d31ca8824a69e3211c"
 dependencies = [
  "boring",
  "cmake",
@@ -1149,7 +1149,7 @@ dependencies = [
  "libc",
  "libm",
  "log",
- "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
+ "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c)",
  "once_cell",
  "qlog",
  "ring",
@@ -1168,7 +1168,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c)",
  "rand",
  "tokio",
 ]
@@ -1181,7 +1181,7 @@ dependencies = [
  "chrono",
  "digest",
  "hmac",
- "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=74b265180e04e9aa3d2213a3b07749e6d7596ed2)",
+ "quiche 0.20.0 (git+https://github.com/theenbyperor/quiche?rev=bdd809fa53eb95586a23c5d31ca8824a69e3211c)",
  "quiver-util",
  "serde",
  "sha2",

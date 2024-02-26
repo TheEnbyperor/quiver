@@ -724,6 +724,11 @@ impl Message {
         self.stream.get_ref().stream_id().full_stream_id()
     }
 
+    pub async fn set_max_data(&self, max_data: u64) -> error::HttpResult<()> {
+        self.stream.get_ref().set_max_data(max_data).await?;
+        Ok(())
+    }
+
     async fn process_trailers(&mut self, trailers_bytes: Vec<u8>) -> error::HttpResult<()> {
         let trailers_block = qpack::FieldLines::from_bytes(&trailers_bytes).await?;
         let mut trailers = Connection::decode_headers(
