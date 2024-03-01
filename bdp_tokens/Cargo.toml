@@ -17,3 +17,5 @@ byteorder = "1.5.0"
 digest = "0.10.7"
 subtle = "2.5.0"
 serde = "1"
+num_enum = "0.7.2"
+chacha20poly1305 = { version = "0.10.1" }
