@@ -122,6 +122,10 @@ pub(super) enum Control {
     },
     SetupDefaultStreamWindow {
         window: u64,
+    },
+    SetInitialRTT {
+        initial_rtt: Duration,
+        resp: tokio::sync::oneshot::Sender<ConnectionResult<()>>,
     }
 }
 
@@ -542,6 +546,10 @@ impl Connection {
     pub async fn setup_default_stream_window(&self, window: u64) -> ConnectionResult<()> {
         self.send_half.setup_default_stream_window(window).await
     }
+
+    pub async fn set_initial_rtt(&self, initial_rtt: Duration) -> ConnectionResult<()> {
+        self.send_half.set_initial_rtt(initial_rtt).await
+    }
 }
 
 impl ConnectionSendHalf {
@@ -726,6 +734,18 @@ impl ConnectionSendHalf {
             window,
         }).await?;
         Ok(())
+    }
+
+    pub async fn set_initial_rtt(&self, initial_rtt: Duration) -> ConnectionResult<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send_control(Control::SetInitialRTT {
+            initial_rtt,
+            resp: tx
+        }).await?;
+        match rx.await {
+            Ok(r) => r,
+            Err(_) => Err(self.make_error().await)
+        }
     }
 }
 
@@ -1006,6 +1026,14 @@ impl SharedConnectionState {
                             } => {
                                 let _ = resp.send(
                                     inner.conn.setup_careful_resume(previous_rtt, previous_cwnd)
+                                        .map_err(|e| e.into())
+                                );
+                            }
+                            Control::SetInitialRTT {
+                                initial_rtt, resp
+                            } => {
+                                let _ = resp.send(
+                                    inner.conn.set_initial_rtt(initial_rtt)
                                         .map_err(|e| e.into())
                                 );
                             }
