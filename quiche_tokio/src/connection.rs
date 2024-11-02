@@ -133,6 +133,7 @@ pub(super) enum Control {
 pub struct Connection {
     new_stream_rx: Option<tokio::sync::mpsc::Receiver<stream::Stream>>,
     new_token_rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>,
+    new_datagram_rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>,
     new_cr_event_rx: Option<tokio::sync::watch::Receiver<Option<quiche::CREvent>>>,
     send_half: ConnectionSendHalf
 }
@@ -177,6 +178,7 @@ struct InnerConnectionState {
     control_tx: tokio::sync::mpsc::UnboundedSender<Control>,
     new_stream_tx: tokio::sync::mpsc::Sender<stream::Stream>,
     new_token_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    new_datagram_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     new_cr_event_tx: tokio::sync::watch::Sender<Option<quiche::CREvent>>,
 }
 
@@ -378,6 +380,7 @@ impl Connection {
         let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
         let (new_stream_tx, new_stream_rx) = tokio::sync::mpsc::channel(25);
         let (new_token_tx, new_token_rx) = tokio::sync::mpsc::channel(25);
+        let (new_datagram_tx, new_datagram_rx) = tokio::sync::mpsc::channel(25);
         let (new_cr_event_tx, new_cr_event_rx) = tokio::sync::watch::channel(None);
 
         let shared_connection_state = std::sync::Arc::new(SharedConnectionState {
@@ -397,6 +400,7 @@ impl Connection {
         let connection = Connection {
             new_stream_rx: Some(new_stream_rx),
             new_token_rx: Some(new_token_rx),
+            new_datagram_rx: Some(new_datagram_rx),
             new_cr_event_rx: Some(new_cr_event_rx),
             send_half: ConnectionSendHalf {
                 scid: scid.clone(),
@@ -418,6 +422,7 @@ impl Connection {
             control_tx,
             new_stream_tx,
             new_token_tx,
+            new_datagram_tx,
             new_cr_event_tx,
         });
 
@@ -448,6 +453,19 @@ impl Connection {
 
     pub async fn next_new_token(&mut self) -> ConnectionResult<Option<Vec<u8>>> {
         match self.new_token_rx.as_mut().unwrap().recv().await {
+            Some(s) => Ok(Some(s)),
+            None => {
+                let err = self.send_half.shared_state.connection_error.read().await.clone();
+                match err {
+                    None => Ok(None),
+                    Some(e) => Err(e)
+                }
+            }
+        }
+    }
+
+    pub async fn next_datagram(&mut self) -> ConnectionResult<Option<Vec<u8>>> {
+        match self.new_datagram_rx.as_mut().unwrap().recv().await {
             Some(s) => Ok(Some(s)),
             None => {
                 let err = self.send_half.shared_state.connection_error.read().await.clone();
@@ -892,6 +910,10 @@ impl SharedConnectionState {
 
                         while let Some(token) = inner.conn.recv_new_token() {
                            let _ = inner.new_token_tx.try_send(token);
+                        }
+
+                        while let Ok(dgram) = inner.conn.dgram_recv_vec() {
+                           let _ = inner.new_datagram_tx.try_send(dgram);
                         }
 
                         trace!("{:?} receive done", inner.scid);

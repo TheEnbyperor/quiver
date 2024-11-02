@@ -1061,11 +1061,6 @@ version = "0.3.0"
 [[package]]
 name = "octets"
 version = "0.3.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=09ee22073e4c0707d066287a2c4b32facd587da3#09ee22073e4c0707d066287a2c4b32facd587da3"
-
-[[package]]
-name = "octets"
-version = "0.3.0"
 source = "git+https://github.com/theenbyperor/quiche?rev=3c92052a99bd6abb1c8ed5162b99a6b808322b6b#3c92052a99bd6abb1c8ed5162b99a6b808322b6b"
 
 [[package]]
@@ -1215,18 +1210,6 @@ dependencies = [
 
 [[package]]
 name = "qlog"
-version = "0.12.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=09ee22073e4c0707d066287a2c4b32facd587da3#09ee22073e4c0707d066287a2c4b32facd587da3"
-dependencies = [
- "serde",
- "serde_derive",
- "serde_json",
- "serde_with",
- "smallvec",
-]
-
-[[package]]
-name = "qlog"
 version = "0.13.0"
 source = "git+https://github.com/theenbyperor/quiche?rev=3c92052a99bd6abb1c8ed5162b99a6b808322b6b#3c92052a99bd6abb1c8ed5162b99a6b808322b6b"
 dependencies = [
@@ -1235,28 +1218,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "smallvec",
-]
-
-[[package]]
-name = "quiche"
-version = "0.20.0"
-source = "git+https://github.com/theenbyperor/quiche?rev=09ee22073e4c0707d066287a2c4b32facd587da3#09ee22073e4c0707d066287a2c4b32facd587da3"
-dependencies = [
- "boring",
- "cmake",
- "either",
- "foreign-types-shared",
- "intrusive-collections",
- "libc",
- "libm",
- "log",
- "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=09ee22073e4c0707d066287a2c4b32facd587da3)",
- "once_cell",
- "qlog 0.12.0",
- "ring",
- "slab",
- "smallvec",
- "winapi",
 ]
 
 [[package]]
@@ -1292,7 +1253,7 @@ dependencies = [
  "log",
  "octets 0.3.0 (git+https://github.com/theenbyperor/quiche?rev=3c92052a99bd6abb1c8ed5162b99a6b808322b6b)",
  "once_cell",
- "qlog 0.13.0",
+ "qlog",
  "ring",
  "slab",
  "smallvec",
@@ -1324,7 +1285,7 @@ dependencies = [
  "digest",
  "hmac",
  "num_enum",
- "quiche 0.20.0",
+ "quiche 0.22.0",
  "quiver-util",
  "serde",
  "sha2",
